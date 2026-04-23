@@ -57,7 +57,10 @@ function useCanvasActive({ targetId = "output", rootMargin = "320px" } = {}) {
 
 function setupCanvasDpr(canvas, ctx) {
   // SP では dpr を 1.5 以下に制限してパフォーマンスを確保
-  const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.5 : 2);
+  const dpr = Math.min(
+    window.devicePixelRatio || 1,
+    window.innerWidth < 768 ? 1.5 : 2
+  );
   const rect = canvas.getBoundingClientRect();
   const W = Math.max(1, Math.floor(rect.width));
   const H = Math.max(1, Math.floor(rect.height));
@@ -82,11 +85,15 @@ function StarField({ targetId = "output", count = 160, z = 2 }) {
     const ctx = canvas?.getContext?.("2d", { alpha: true });
     if (!canvas || !ctx) return;
 
-    let raf = 0, W = 0, H = 0, stars = [];
+    let raf = 0,
+      W = 0,
+      H = 0,
+      stars = [];
 
     const build = () => {
       const s = setupCanvasDpr(canvas, ctx);
-      W = s.W; H = s.H;
+      W = s.W;
+      H = s.H;
       const n = Math.max(40, Math.floor(count * factor));
       stars = Array.from({ length: n }, () => ({
         x: rand(0, W),
@@ -101,11 +108,17 @@ function StarField({ targetId = "output", count = 160, z = 2 }) {
 
     const draw = (t) => {
       ctx.clearRect(0, 0, W, H);
-      if (!active) { raf = requestAnimationFrame(draw); return; }
+      if (!active) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
 
       const time = t * 0.001;
       for (const s of stars) {
-        const alpha = Math.max(0.02, s.a * (0.55 + 0.45 * Math.sin(time * 1.2 + s.phase)));
+        const alpha = Math.max(
+          0.02,
+          s.a * (0.55 + 0.45 * Math.sin(time * 1.2 + s.phase))
+        );
         const x = s.x + Math.sin(time * 0.22 + s.phase) * 1.1;
         const y = s.y + Math.cos(time * 0.18 + s.phase) * 0.9;
         s.x += s.drift * 0.018;
@@ -121,8 +134,10 @@ function StarField({ targetId = "output", count = 160, z = 2 }) {
           ctx.strokeStyle = `rgba(210,170,255,${alpha * 0.18})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(x - 3, y); ctx.lineTo(x + 3, y);
-          ctx.moveTo(x, y - 3); ctx.lineTo(x, y + 3);
+          ctx.moveTo(x - 3, y);
+          ctx.lineTo(x + 3, y);
+          ctx.moveTo(x, y - 3);
+          ctx.lineTo(x, y + 3);
           ctx.stroke();
         }
       }
@@ -132,14 +147,25 @@ function StarField({ targetId = "output", count = 160, z = 2 }) {
     build();
     window.addEventListener("resize", build, { passive: true });
     raf = requestAnimationFrame(draw);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", build); };
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", build);
+    };
   }, [active, reduce, factor, count]);
 
   return (
     <canvas
       ref={ref}
       aria-hidden="true"
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: z, opacity: 0.7 }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: z,
+        opacity: 0.7,
+      }}
     />
   );
 }
@@ -157,12 +183,22 @@ function ShootingStar({ targetId = "output", z = 3 }) {
     const ctx = canvas?.getContext?.("2d", { alpha: true });
     if (!canvas || !ctx) return;
 
-    let raf = 0, W = 0, H = 0, t0 = 0;
-    const reset = () => { const s = setupCanvasDpr(canvas, ctx); W = s.W; H = s.H; };
+    let raf = 0,
+      W = 0,
+      H = 0,
+      t0 = 0;
+    const reset = () => {
+      const s = setupCanvasDpr(canvas, ctx);
+      W = s.W;
+      H = s.H;
+    };
 
     const draw = (t) => {
       ctx.clearRect(0, 0, W, H);
-      if (!active) { raf = requestAnimationFrame(draw); return; }
+      if (!active) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
       if (!t0) t0 = t;
       const phase = ((t - t0) / 1000) % 20;
       if (phase < 1.4) {
@@ -170,7 +206,12 @@ function ShootingStar({ targetId = "output", z = 3 }) {
         const x0 = W * 0.16 + p * W * 0.48;
         const y0 = H * 0.12 + p * H * 0.22;
         const tail = 150 * factor;
-        const grad = ctx.createLinearGradient(x0, y0, x0 - tail * 0.92, y0 - tail * 0.55);
+        const grad = ctx.createLinearGradient(
+          x0,
+          y0,
+          x0 - tail * 0.92,
+          y0 - tail * 0.55
+        );
         grad.addColorStop(0, "rgba(244,232,255,0.60)");
         grad.addColorStop(0.3, "rgba(196,154,255,0.34)");
         grad.addColorStop(1, "rgba(124,88,255,0)");
@@ -191,14 +232,25 @@ function ShootingStar({ targetId = "output", z = 3 }) {
     reset();
     window.addEventListener("resize", reset, { passive: true });
     raf = requestAnimationFrame(draw);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", reset); };
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", reset);
+    };
   }, [active, reduce, factor]);
 
   return (
     <canvas
       ref={ref}
       aria-hidden="true"
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: z, opacity: 0.65 }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: z,
+        opacity: 0.65,
+      }}
     />
   );
 }
@@ -214,7 +266,9 @@ function SealMark({ active }) {
       ].join(" ")}
     >
       <span className="h-[10px] w-[10px] rounded-full border border-white/20 bg-white/5" />
-      <span className="text-[11px] tracking-[0.28em] text-[color:var(--text-muted)]">印</span>
+      <span className="text-[11px] tracking-[0.28em] text-[color:var(--text-muted)]">
+        印
+      </span>
       <span className="h-[10px] w-[10px] rounded-full border border-white/12" />
     </div>
   );
@@ -224,7 +278,6 @@ function SealMark({ active }) {
 function Block({ label, subtitle, desc, img, children }) {
   return (
     <section className="border-t border-white/10 pt-6 md:pt-7">
-      {/* ヘッダー：SP では縦積み、PC では横並び */}
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
         <div className="flex items-center gap-3">
           {img && (
@@ -247,7 +300,7 @@ function Block({ label, subtitle, desc, img, children }) {
           </p>
         )}
       </div>
-      {/* 本文：SP での行間・字詰めを読みやすく調整 */}
+
       <div className="text-[14px] leading-[2.15] tracking-[0.02em] text-[color:var(--text-primary)] sm:text-[15px]">
         {children}
       </div>
@@ -274,13 +327,12 @@ function MetaRow({ meta }) {
   );
 }
 
-/* ─── CopyButton with feedback ─── */
+/* ─── ActionButton ─── */
 function ActionButton({ onClick, children, done }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      // タッチターゲット 44px
       className={[
         "meishiki-cta",
         "inline-flex min-h-[44px] items-center justify-center gap-2",
@@ -298,6 +350,27 @@ function ActionButton({ onClick, children, done }) {
   );
 }
 
+/* ─── clipboard fallback ─── */
+function fallbackCopyText(text) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.left = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand?.("copy");
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch {
+    return false;
+  }
+}
+
 /* ═══════════════════════════════════════════════
    OutputSection
 ═══════════════════════════════════════════════ */
@@ -308,7 +381,17 @@ export default function OutputSection({ formData }) {
 
   const [sealed, setSealed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   const [methodOpen, setMethodOpen] = useState(false);
+
+  // toast
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef(0);
+  const showToast = (msg) => {
+    setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 2100);
+  };
 
   const memo = useMemo(() => buildMemo(formData), [formData]);
   const meta = useMemo(() => formatMeta(formData, memo), [formData, memo]);
@@ -316,22 +399,82 @@ export default function OutputSection({ formData }) {
   useEffect(() => {
     setSealed(false);
     setCopied(false);
+    setShared(false);
     setMethodOpen(false);
+    setToast("");
+    window.clearTimeout(toastTimer.current);
   }, [formData?.birth, formData?.place, formData?.time, formData?.name]);
 
-  if (!memo) return null;
+  useEffect(() => {
+    return () => window.clearTimeout(toastTimer.current);
+  }, []);
 
-  const handleSeal = () => setSealed(true);
+  if (!memo) return null;
 
   const handleCopy = async () => {
     try {
       const text = buildCopyText(formData, memo);
-      await navigator.clipboard.writeText(text);
+
+      // Clipboard API
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ok = fallbackCopyText(text);
+        if (!ok) throw new Error("copy_failed");
+      }
+
       setCopied(true);
       setSealed(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      showToast("結果の文を写すことに成功しました。");
+      window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      // silent fallback（iOS Safari の制約など）
+      showToast("コピーできませんでした。長押しで選択してコピーしてください。");
+    }
+  };
+
+  const handleShare = async () => {
+    // hash を落として“綺麗なURL”を共有
+    const u = new URL(window.location.href);
+    u.hash = "";
+    const url = u.toString();
+
+    try {
+      // Web Share（対応端末はこれが最強）
+      if (navigator.share) {
+        await navigator.share({
+          title: "MEISHIKI｜命式メモ",
+          text: "算命学の入口：年柱（年干支）を起こす命式メモ",
+          url,
+        });
+        setShared(true);
+        setSealed(true);
+        showToast("共有を開きました。");
+        window.setTimeout(() => setShared(false), 1800);
+        return;
+      }
+
+      // フォールバック：URLコピー
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        setSealed(true);
+        showToast("サイトURLを写しました。");
+        window.setTimeout(() => setShared(false), 1800);
+        return;
+      }
+
+      // 最終手段
+      window.prompt("このURLをコピーして共有してください。", url);
+      setShared(true);
+      setSealed(true);
+      showToast("URLを表示しました。コピーして共有してください。");
+      window.setTimeout(() => setShared(false), 1800);
+    } catch (e) {
+      if (e?.name === "AbortError") {
+        showToast("共有をキャンセルしました。");
+        return;
+      }
+      showToast("共有できませんでした。URLをコピーして共有してください。");
     }
   };
 
@@ -378,7 +521,7 @@ export default function OutputSection({ formData }) {
             ].join(","),
           }}
         />
-        {/* PC のみ texture */}
+
         {!isMobile && (
           <>
             <div
@@ -388,7 +531,9 @@ export default function OutputSection({ formData }) {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(1.2px) saturate(0.95) brightness(0.78)",
-                animation: reduce ? "none" : "meishikiSpaceDriftA 26s ease-in-out infinite",
+                animation: reduce
+                  ? "none"
+                  : "meishikiSpaceDriftA 26s ease-in-out infinite",
               }}
             />
             <div
@@ -398,12 +543,14 @@ export default function OutputSection({ formData }) {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(9px) saturate(1.05) brightness(0.72)",
-                animation: reduce ? "none" : "meishikiSpaceDriftB 36s ease-in-out infinite",
+                animation: reduce
+                  ? "none"
+                  : "meishikiSpaceDriftB 36s ease-in-out infinite",
               }}
             />
           </>
         )}
-        {/* SP 向け軽量オーブ */}
+
         {isMobile && (
           <div
             className="absolute inset-0"
@@ -415,6 +562,7 @@ export default function OutputSection({ formData }) {
             }}
           />
         )}
+
         <div
           className="absolute inset-0"
           style={{
@@ -423,32 +571,39 @@ export default function OutputSection({ formData }) {
               "radial-gradient(circle at 18% 30%, rgba(132,88,255,0.14), rgba(0,0,0,0) 32%)",
             ].join(","),
             filter: "blur(0.3px)",
-            animation: reduce ? "none" : "meishikiVeilBreathe 14s ease-in-out infinite",
+            animation: reduce
+              ? "none"
+              : "meishikiVeilBreathe 14s ease-in-out infinite",
           }}
         />
+
         <div
           className="absolute inset-0"
           style={{
-            opacity: isMobile ? 0.06 : 0.10,
-            backgroundImage: "radial-gradient(rgba(255,245,255,0.9) 1px, transparent 1px)",
+            opacity: isMobile ? 0.06 : 0.1,
+            backgroundImage:
+              "radial-gradient(rgba(255,245,255,0.9) 1px, transparent 1px)",
             backgroundSize: "160px 160px",
             backgroundPosition: "22px 12px",
           }}
         />
+
         <div
           className="absolute inset-x-0 bottom-0 h-[22vh]"
-          style={{ background: "linear-gradient(to top, rgba(8,4,14,0.92), transparent)" }}
+          style={{
+            background:
+              "linear-gradient(to top, rgba(8,4,14,0.92), transparent)",
+          }}
         />
       </div>
 
-      {/* Stars（SP ではカウント半減） */}
+      {/* Stars */}
       <StarField targetId="output" count={isMobile ? 80 : 160} z={2} />
       <ShootingStar targetId="output" z={3} />
 
       {/* ── Content ── */}
       <div className="relative mx-auto max-w-[1120px] px-4 sm:px-6">
         <div className="aq-fade relative border-l border-white/10 pl-5 md:pl-10">
-          {/* ruled lines：PC のみ */}
           {!isMobile && (
             <div
               aria-hidden="true"
@@ -474,16 +629,34 @@ export default function OutputSection({ formData }) {
                 <MetaRow meta={meta} />
               </div>
 
-              {/* アクションボタン：SP では横スクロールせずに折り返す */}
+              {/* Actions */}
               <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:gap-3">
                 <ActionButton onClick={handleCopy} done={copied}>
                   {copied ? "写しました" : "印を写す"}
                 </ActionButton>
-                <ActionButton onClick={handleSeal} done={sealed}>
-                  印を残す
+
+                <ActionButton onClick={handleShare} done={shared}>
+                  {shared ? "共有しました" : "印を共有する"}
                 </ActionButton>
               </div>
             </div>
+
+            {/* Toast（押した直後に何が起きたかを見せる） */}
+            {toast && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="
+                  -mt-2 mb-8 inline-flex max-w-[560px]
+                  rounded-[14px] border border-white/12 bg-white/5
+                  px-4 py-3 text-[11px] leading-[1.9]
+                  tracking-[0.12em] text-white/80
+                  backdrop-blur
+                "
+              >
+                {toast}
+              </div>
+            )}
 
             {/* ── Blocks ── */}
             <div className="space-y-6 md:space-y-7">
@@ -501,10 +674,9 @@ export default function OutputSection({ formData }) {
 
               <SealMark active={sealed} />
 
-              {/* ── 算出根拠（モバイル向け：<details> を独自実装でアニメーション付き） ── */}
+              {/* ── 算出根拠 ── */}
               {memo?.method && (
                 <section className="border-t border-white/10 pt-6 md:pt-7">
-                  {/* ヘッダー（タッチターゲット 44px） */}
                   <button
                     type="button"
                     onClick={() => setMethodOpen((v) => !v)}
@@ -524,11 +696,12 @@ export default function OutputSection({ formData }) {
                     </span>
                   </button>
 
-                  {/* アコーディオン本体 */}
                   <div
                     className={[
                       "overflow-hidden transition-all duration-500 [transition-timing-function:var(--ease-ink)]",
-                      methodOpen ? "max-h-[800px] opacity-100 pt-5" : "max-h-0 opacity-0",
+                      methodOpen
+                        ? "max-h-[800px] opacity-100 pt-5"
+                        : "max-h-0 opacity-0",
                     ].join(" ")}
                   >
                     <div className="space-y-2 text-[12px] leading-[2.0] text-[color:var(--text-secondary)]">
@@ -549,7 +722,6 @@ export default function OutputSection({ formData }) {
                                 href={s.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                // リンクのタッチターゲットを広げる
                                 className="block py-1 text-[12px] leading-[1.9] text-[color:var(--text-muted)] underline decoration-white/20 underline-offset-4 hover:decoration-[color:var(--mist-400)] active:text-white/80"
                               >
                                 {s.title}
@@ -566,7 +738,8 @@ export default function OutputSection({ formData }) {
               {/* ── Footer ── */}
               <div className="pt-10 text-[11px] leading-[2.0] text-[color:var(--text-muted)] md:pt-12 md:text-[12px]">
                 <p>
-                  これは予言ではなく、自己理解のための記録です。<br className="sm:hidden" />
+                  これは予言ではなく、自己理解のための記録です。
+                  <br className="sm:hidden" />
                   あなたの判断と行動が、現実をつくります。
                 </p>
                 <p className="mt-4">
