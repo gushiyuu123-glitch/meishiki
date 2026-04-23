@@ -638,7 +638,7 @@ const BRANCH_ADD = {
 ───────────────────────────────────────── */
 const PILLAR_NOTE = {
   甲子: "大樹の根が地下水に届く。構想が深い場所から出てくる年柱。",
-  甲寅: "大樹が大木を目指して伸びる。突破力と構想が重なる。行動の起点が强い。",
+  甲寅: "大樹が大木を目指して伸びる。突破力と構想が重なる。行動の起点が強い。",
   甲辰: "大樹が大地を変容させる。核が固まれば、周辺が従属する。",
   甲午: "樹が炎のように伸びる。勢いと構想が同時に動く。焦点が命。",
   甲申: "大樹に機転が加わる。状況を読みながら伸びていく。",
@@ -831,10 +831,15 @@ export function buildMemo(formData) {
       distance: mixPool("distance", 29),
       words:    mixPool("words",    41),
       time:     mixPool("time",     53),
-      seal:     pick(
-        [...(BRANCH_ADD[nenchu.branch]?.core ?? []), ...BASE.seal],
-        seedSeal, 37
-      ),
+seal: pick(
+  [
+    ...(BRANCH_ADD[nenchu.branch]?.seal ?? []),
+    ...(ELEMENT_ADD[element]?.seal ?? []),
+    ...BASE.seal,
+  ],
+  seedSeal,
+  37
+),
     },
 
     method: buildMethod({ birth, appliedYear, nenchu }),
