@@ -56,7 +56,6 @@ function useCanvasActive({ targetId = "output", rootMargin = "320px" } = {}) {
 }
 
 function setupCanvasDpr(canvas, ctx) {
-  // SP では dpr を 1.5 以下に制限してパフォーマンスを確保
   const dpr = Math.min(
     window.devicePixelRatio || 1,
     window.innerWidth < 768 ? 1.5 : 2
@@ -187,6 +186,7 @@ function ShootingStar({ targetId = "output", z = 3 }) {
       W = 0,
       H = 0,
       t0 = 0;
+
     const reset = () => {
       const s = setupCanvasDpr(canvas, ctx);
       W = s.W;
@@ -200,12 +200,14 @@ function ShootingStar({ targetId = "output", z = 3 }) {
         return;
       }
       if (!t0) t0 = t;
+
       const phase = ((t - t0) / 1000) % 20;
       if (phase < 1.4) {
         const p = phase / 1.4;
         const x0 = W * 0.16 + p * W * 0.48;
         const y0 = H * 0.12 + p * H * 0.22;
         const tail = 150 * factor;
+
         const grad = ctx.createLinearGradient(
           x0,
           y0,
@@ -215,12 +217,14 @@ function ShootingStar({ targetId = "output", z = 3 }) {
         grad.addColorStop(0, "rgba(244,232,255,0.60)");
         grad.addColorStop(0.3, "rgba(196,154,255,0.34)");
         grad.addColorStop(1, "rgba(124,88,255,0)");
+
         ctx.strokeStyle = grad;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.moveTo(x0, y0);
         ctx.lineTo(x0 - tail * 0.92, y0 - tail * 0.55);
         ctx.stroke();
+
         ctx.fillStyle = "rgba(244,232,255,0.66)";
         ctx.beginPath();
         ctx.arc(x0, y0, 1.8, 0, Math.PI * 2);
@@ -381,16 +385,20 @@ export default function OutputSection({ formData }) {
 
   const [sealed, setSealed] = useState(false);
   const [copied, setCopied] = useState(false);
+
   const [shared, setShared] = useState(false);
+  const [sharedKind, setSharedKind] = useState(""); // "sheet" | "copy" | "prompt" | ""
+
   const [methodOpen, setMethodOpen] = useState(false);
 
-  // toast
+  // toast（短く）
   const [toast, setToast] = useState("");
   const toastTimer = useRef(0);
+  const TOAST_MS = 1850;
   const showToast = (msg) => {
     setToast(msg);
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(""), 2100);
+    toastTimer.current = window.setTimeout(() => setToast(""), TOAST_MS);
   };
 
   const memo = useMemo(() => buildMemo(formData), [formData]);
@@ -400,14 +408,13 @@ export default function OutputSection({ formData }) {
     setSealed(false);
     setCopied(false);
     setShared(false);
+    setSharedKind("");
     setMethodOpen(false);
     setToast("");
     window.clearTimeout(toastTimer.current);
   }, [formData?.birth, formData?.place, formData?.time, formData?.name]);
 
-  useEffect(() => {
-    return () => window.clearTimeout(toastTimer.current);
-  }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   if (!memo) return null;
 
@@ -415,7 +422,6 @@ export default function OutputSection({ formData }) {
     try {
       const text = buildCopyText(formData, memo);
 
-      // Clipboard API
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
       } else {
@@ -425,58 +431,60 @@ export default function OutputSection({ formData }) {
 
       setCopied(true);
       setSealed(true);
-      showToast("結果の文を写すことに成功しました。");
-      window.setTimeout(() => setCopied(false), 1800);
+      showToast("写しました。");
+      window.setTimeout(() => setCopied(false), 1650);
     } catch {
-      showToast("コピーできませんでした。長押しで選択してコピーしてください。");
+      showToast("写せませんでした。長押しでコピーしてください。");
     }
   };
 
   const handleShare = async () => {
-    // hash を落として“綺麗なURL”を共有
     const u = new URL(window.location.href);
     u.hash = "";
     const url = u.toString();
 
     try {
-      // Web Share（対応端末はこれが最強）
       if (navigator.share) {
         await navigator.share({
-          title: "MEISHIKI｜命式メモ",
-          text: "算命学の入口：年柱（年干支）を起こす命式メモ",
+          title: "MEISHIKI — 命式メモ",
+          text: "予言ではなく、自己理解の記録。年柱（年干支）を起こして、いまの傾向を整える。",
           url,
         });
         setShared(true);
+        setSharedKind("sheet");
         setSealed(true);
-        showToast("共有を開きました。");
-        window.setTimeout(() => setShared(false), 1800);
+        showToast("開きました。");
+        window.setTimeout(() => setShared(false), 1650);
         return;
       }
 
-      // フォールバック：URLコピー
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
         setShared(true);
+        setSharedKind("copy");
         setSealed(true);
-        showToast("サイトURLを写しました。");
-        window.setTimeout(() => setShared(false), 1800);
+        showToast("URLを写しました。");
+        window.setTimeout(() => setShared(false), 1650);
         return;
       }
 
-      // 最終手段
       window.prompt("このURLをコピーして共有してください。", url);
       setShared(true);
+      setSharedKind("prompt");
       setSealed(true);
-      showToast("URLを表示しました。コピーして共有してください。");
-      window.setTimeout(() => setShared(false), 1800);
+      showToast("URLを表示しました。");
+      window.setTimeout(() => setShared(false), 1650);
     } catch (e) {
       if (e?.name === "AbortError") {
-        showToast("共有をキャンセルしました。");
+        showToast("閉じました。");
         return;
       }
-      showToast("共有できませんでした。URLをコピーして共有してください。");
+      showToast("共有できませんでした。URLをコピーしてください。");
     }
   };
+
+  const shareDoneLabel =
+    sharedKind === "copy" ? "写しました" : sharedKind === "prompt" ? "表示" : "開きました";
 
   return (
     <section
@@ -484,6 +492,7 @@ export default function OutputSection({ formData }) {
       ref={rootRef}
       className={[
         "relative overflow-hidden no-scroll-anchor",
+        // ※“切れ目”はBGレイヤーで溶かす
         "bg-[color:var(--ink-deep)] text-[color:var(--text-primary)]",
         "pt-[clamp(80px,12vh,200px)]",
         "pb-[clamp(100px,14vh,240px)]",
@@ -491,7 +500,6 @@ export default function OutputSection({ formData }) {
         shown ? "aq-show" : "",
       ].join(" ")}
     >
-      {/* keyframes */}
       <style>{`
         @keyframes meishikiSpaceDriftA {
           0%   { transform:translate3d(0%,0%,0) scale(1.06); opacity:.16; }
@@ -507,21 +515,61 @@ export default function OutputSection({ formData }) {
           0%,100% { opacity:.70; transform:translate3d(0,0,0) scale(1); }
           50%     { opacity:.86; transform:translate3d(0,-1%,0) scale(1.02); }
         }
+        @keyframes meishikiAuroraSweep {
+          0%   { transform:translate3d(-18%,0,0) rotate(-4deg); opacity:.16; }
+          50%  { transform:translate3d(10%,0,0) rotate(2deg);  opacity:.28; }
+          100% { transform:translate3d(22%,0,0) rotate(-2deg); opacity:.16; }
+        }
       `}</style>
 
-      {/* ── BG ── */}
+      {/* ── BG（切れ目を溶かす） ── */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        {/* ここが核：上端/下端を ink-mid に寄せて、中央で ink-deep に沈める */}
         <div
           className="absolute inset-0"
           style={{
             background: [
+              "linear-gradient(180deg, var(--ink-mid) 0%, var(--ink-deep) 22vh, var(--ink-deep) calc(100% - 22vh), var(--ink-mid) 100%)",
               "radial-gradient(ellipse at 24% 10%, rgba(130,60,200,0.18) 0%, transparent 58%)",
               "radial-gradient(ellipse at 78% 75%, rgba(80,30,160,0.12) 0%, transparent 55%)",
-              "linear-gradient(170deg, rgba(15,8,24,1) 0%, rgba(10,6,16,1) 40%, rgba(13,9,32,1) 100%)",
             ].join(","),
           }}
         />
 
+        {/* 境界の羽化（上/下）：さらに薄く“溶かす” */}
+        <div
+          className="absolute inset-x-0 top-0"
+          style={{
+            height: "clamp(90px, 14vh, 260px)",
+            background:
+              "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.16) 48%, rgba(0,0,0,0) 100%)",
+            opacity: 0.55,
+          }}
+        />
+        <div
+          className="absolute inset-x-0 bottom-0"
+          style={{
+            height: "clamp(110px, 16vh, 320px)",
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,0.18) 48%, rgba(0,0,0,0) 100%)",
+            opacity: 0.55,
+          }}
+        />
+
+        {/* オーロラ（演出追加・軽い） */}
+        <div
+          className="absolute inset-[-12%]"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(190,145,255,0.10) 40%, rgba(170,110,255,0.06) 54%, rgba(0,0,0,0) 100%)",
+            filter: "blur(26px) saturate(1.12)",
+            mixBlendMode: "screen",
+            animation: reduce ? "none" : "meishikiAuroraSweep 18s ease-in-out infinite",
+            opacity: 0.55,
+          }}
+        />
+
+        {/* texture（PCのみ） */}
         {!isMobile && (
           <>
             <div
@@ -531,9 +579,7 @@ export default function OutputSection({ formData }) {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(1.2px) saturate(0.95) brightness(0.78)",
-                animation: reduce
-                  ? "none"
-                  : "meishikiSpaceDriftA 26s ease-in-out infinite",
+                animation: reduce ? "none" : "meishikiSpaceDriftA 26s ease-in-out infinite",
               }}
             />
             <div
@@ -543,14 +589,13 @@ export default function OutputSection({ formData }) {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(9px) saturate(1.05) brightness(0.72)",
-                animation: reduce
-                  ? "none"
-                  : "meishikiSpaceDriftB 36s ease-in-out infinite",
+                animation: reduce ? "none" : "meishikiSpaceDriftB 36s ease-in-out infinite",
               }}
             />
           </>
         )}
 
+        {/* SP向け：軽量オーブ */}
         {isMobile && (
           <div
             className="absolute inset-0"
@@ -559,10 +604,12 @@ export default function OutputSection({ formData }) {
                 "radial-gradient(circle at 25% 18%, rgba(130,60,200,0.16) 0%, transparent 50%)",
                 "radial-gradient(circle at 75% 80%, rgba(80,30,160,0.12) 0%, transparent 46%)",
               ].join(","),
+              opacity: 0.9,
             }}
           />
         )}
 
+        {/* veil */}
         <div
           className="absolute inset-0"
           style={{
@@ -571,34 +618,25 @@ export default function OutputSection({ formData }) {
               "radial-gradient(circle at 18% 30%, rgba(132,88,255,0.14), rgba(0,0,0,0) 32%)",
             ].join(","),
             filter: "blur(0.3px)",
-            animation: reduce
-              ? "none"
-              : "meishikiVeilBreathe 14s ease-in-out infinite",
+            animation: reduce ? "none" : "meishikiVeilBreathe 14s ease-in-out infinite",
           }}
         />
 
+        {/* dot */}
         <div
           className="absolute inset-0"
           style={{
-            opacity: isMobile ? 0.06 : 0.1,
+            opacity: isMobile ? 0.06 : 0.10,
             backgroundImage:
               "radial-gradient(rgba(255,245,255,0.9) 1px, transparent 1px)",
             backgroundSize: "160px 160px",
             backgroundPosition: "22px 12px",
           }}
         />
-
-        <div
-          className="absolute inset-x-0 bottom-0 h-[22vh]"
-          style={{
-            background:
-              "linear-gradient(to top, rgba(8,4,14,0.92), transparent)",
-          }}
-        />
       </div>
 
-      {/* Stars */}
-      <StarField targetId="output" count={isMobile ? 80 : 160} z={2} />
+      {/* Stars（維持／少しだけ増） */}
+      <StarField targetId="output" count={isMobile ? 90 : 180} z={2} />
       <ShootingStar targetId="output" z={3} />
 
       {/* ── Content ── */}
@@ -617,7 +655,6 @@ export default function OutputSection({ formData }) {
           )}
 
           <div className="relative max-w-[900px]">
-            {/* ── Header ── */}
             <div className="mb-8 flex flex-col gap-5 md:mb-10 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-[10px] tracking-[0.30em] text-[color:var(--text-muted)]">
@@ -629,19 +666,17 @@ export default function OutputSection({ formData }) {
                 <MetaRow meta={meta} />
               </div>
 
-              {/* Actions */}
               <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:gap-3">
                 <ActionButton onClick={handleCopy} done={copied}>
                   {copied ? "写しました" : "印を写す"}
                 </ActionButton>
 
                 <ActionButton onClick={handleShare} done={shared}>
-                  {shared ? "共有しました" : "印を共有する"}
+                  {shared ? shareDoneLabel : "印を共有する"}
                 </ActionButton>
               </div>
             </div>
 
-            {/* Toast（押した直後に何が起きたかを見せる） */}
             {toast && (
               <div
                 role="status"
@@ -658,7 +693,6 @@ export default function OutputSection({ formData }) {
               </div>
             )}
 
-            {/* ── Blocks ── */}
             <div className="space-y-6 md:space-y-7">
               {memo.blocks.map((b) => (
                 <Block
@@ -674,7 +708,6 @@ export default function OutputSection({ formData }) {
 
               <SealMark active={sealed} />
 
-              {/* ── 算出根拠 ── */}
               {memo?.method && (
                 <section className="border-t border-white/10 pt-6 md:pt-7">
                   <button
@@ -735,7 +768,6 @@ export default function OutputSection({ formData }) {
                 </section>
               )}
 
-              {/* ── Footer ── */}
               <div className="pt-10 text-[11px] leading-[2.0] text-[color:var(--text-muted)] md:pt-12 md:text-[12px]">
                 <p>
                   これは予言ではなく、自己理解のための記録です。
