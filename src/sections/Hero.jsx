@@ -12,49 +12,59 @@ const MOON_OBJECT = "/meishiki/moon-object.png";
 ───────────────────────────────────────── */
 const rand = (a, b) => Math.random() * (b - a) + a;
 
-/* ─────────────────────────────────────────
-   Canvas helpers
-───────────────────────────────────────── */
-function useDeviceFactor() {
-  return useMemo(() => {
-    const reduce =
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+function useDeviceProfile() {
+  const [profile, setProfile] = useState({
+    reduce: false,
+    fine: false,
+    factor: 0.55,
+  });
+
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
     const fine =
       window.matchMedia?.("(pointer: fine)")?.matches &&
       window.matchMedia?.("(hover: hover)")?.matches;
 
-    return { reduce, fine, factor: fine ? 1 : 0.55 };
+    setProfile({
+      reduce: Boolean(reduce),
+      fine: Boolean(fine),
+      factor: fine ? 1 : 0.52,
+    });
   }, []);
+
+  return profile;
 }
 
 function setupCanvasDpr(canvas, ctx) {
-  const cssW = canvas.offsetWidth;
-  const cssH = canvas.offsetHeight;
+  const cssW = Math.max(1, canvas.offsetWidth);
+  const cssH = Math.max(1, canvas.offsetHeight);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
   canvas.width = Math.floor(cssW * dpr);
   canvas.height = Math.floor(cssH * dpr);
   canvas.style.width = `${cssW}px`;
   canvas.style.height = `${cssH}px`;
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   return { W: cssW, H: cssH };
 }
 
 /* ─────────────────────────────────────────
-   Star field canvas
+   Star field
 ───────────────────────────────────────── */
 function StarField({ count = 260, targetId = "hero" }) {
   const ref = useRef(null);
   const active = useCanvasActive({ targetId, rootMargin: "320px" });
-  const { reduce, factor } = useDeviceFactor();
+  const { reduce, factor } = useDeviceProfile();
 
   useEffect(() => {
-    if (reduce) return;
+    if (reduce) return undefined;
 
     const canvas = ref.current;
     const ctx = canvas?.getContext?.("2d", { alpha: true });
-    if (!canvas || !ctx) return;
+
+    if (!canvas || !ctx) return undefined;
 
     let raf = 0;
     let W = 0;
@@ -67,32 +77,31 @@ function StarField({ count = 260, targetId = "hero" }) {
       H = size.H;
 
       const actual = Math.max(90, Math.floor(count * factor));
+
       stars = Array.from({ length: actual }, () => ({
         x: rand(0, W),
         y: rand(0, H),
-        r: rand(0.3, 1.4),
-        alpha: rand(0.15, 0.9),
-        speed: rand(0.0006, 0.003),
+        r: rand(0.25, 1.35),
+        alpha: rand(0.12, 0.82),
+        speed: rand(0.00045, 0.0024),
+        drift: rand(3, 12),
         phase: rand(0, Math.PI * 2),
       }));
     };
 
     const draw = (t) => {
       ctx.clearRect(0, 0, W, H);
+
       if (!active) return;
 
       for (const s of stars) {
-        const a =
-          s.alpha * (0.5 + 0.5 * Math.sin(t * s.speed * 1000 + s.phase));
+        const pulse = 0.45 + 0.55 * Math.sin(t * s.speed * 1000 + s.phase);
+        const alpha = s.alpha * pulse;
+        const x = s.x + Math.sin(t * 0.00035 + s.phase) * s.drift;
+
         ctx.beginPath();
-        ctx.arc(
-          s.x + Math.sin(t * 0.0004 + s.phase) * 8,
-          s.y,
-          s.r,
-          0,
-          Math.PI * 2
-        );
-        ctx.fillStyle = `rgba(255,245,255,${a})`;
+        ctx.arc(x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(248,240,255,${alpha})`;
         ctx.fill();
       }
 
@@ -100,7 +109,9 @@ function StarField({ count = 260, targetId = "hero" }) {
     };
 
     build();
+
     const onResize = () => build();
+
     window.addEventListener("resize", onResize, { passive: true });
 
     if (active) raf = requestAnimationFrame(draw);
@@ -111,38 +122,26 @@ function StarField({ count = 260, targetId = "hero" }) {
       window.removeEventListener("resize", onResize);
       ctx.clearRect(0, 0, W, H);
     };
-  }, [count, active, reduce, factor]);
+  }, [active, count, factor, reduce]);
 
-  return (
-    <canvas
-      ref={ref}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 2,
-      }}
-      aria-hidden="true"
-    />
-  );
+  return <canvas ref={ref} className="meishiki-canvas meishiki-stars" aria-hidden="true" />;
 }
 
 /* ─────────────────────────────────────────
-   Ink-dust particles
+   Ink dust
 ───────────────────────────────────────── */
-function InkDust({ count = 55, targetId = "hero" }) {
+function InkDust({ count = 58, targetId = "hero" }) {
   const ref = useRef(null);
   const active = useCanvasActive({ targetId, rootMargin: "320px" });
-  const { reduce, factor } = useDeviceFactor();
+  const { reduce, factor } = useDeviceProfile();
 
   useEffect(() => {
-    if (reduce) return;
+    if (reduce) return undefined;
 
     const canvas = ref.current;
     const ctx = canvas?.getContext?.("2d", { alpha: true });
-    if (!canvas || !ctx) return;
+
+    if (!canvas || !ctx) return undefined;
 
     let raf = 0;
     let W = 0;
@@ -154,36 +153,40 @@ function InkDust({ count = 55, targetId = "hero" }) {
       W = size.W;
       H = size.H;
 
-      const actual = Math.max(20, Math.floor(count * factor));
+      const actual = Math.max(18, Math.floor(count * factor));
+
       pts = Array.from({ length: actual }, () => ({
         x: rand(0, W),
         y: rand(0, H),
-        vy: rand(-0.12, -0.04),
-        vx: rand(-0.06, 0.06),
-        r: rand(1.2, 4.0),
-        alpha: rand(0.04, 0.18),
-        hue: rand(250, 300),
+        vx: rand(-0.055, 0.055),
+        vy: rand(-0.105, -0.035),
+        r: rand(1.1, 4.2),
+        alpha: rand(0.035, 0.145),
+        hue: rand(255, 292),
       }));
     };
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
+
       if (!active) return;
 
       for (const p of pts) {
         p.x += p.vx;
         p.y += p.vy;
 
-        if (p.y < -10) {
-          p.y = H + 10;
+        if (p.y < -14) {
+          p.y = H + 14;
           p.x = rand(0, W);
         }
-        if (p.x < -20) p.x = W + 20;
-        if (p.x > W + 20) p.x = -20;
+
+        if (p.x < -24) p.x = W + 24;
+        if (p.x > W + 24) p.x = -24;
 
         const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
-        g.addColorStop(0, `hsla(${p.hue},70%,80%,${p.alpha})`);
-        g.addColorStop(1, `hsla(${p.hue},70%,80%,0)`);
+
+        g.addColorStop(0, `hsla(${p.hue}, 72%, 80%, ${p.alpha})`);
+        g.addColorStop(1, `hsla(${p.hue}, 72%, 80%, 0)`);
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
@@ -195,7 +198,9 @@ function InkDust({ count = 55, targetId = "hero" }) {
     };
 
     build();
+
     const onResize = () => build();
+
     window.addEventListener("resize", onResize, { passive: true });
 
     if (active) raf = requestAnimationFrame(draw);
@@ -206,26 +211,13 @@ function InkDust({ count = 55, targetId = "hero" }) {
       window.removeEventListener("resize", onResize);
       ctx.clearRect(0, 0, W, H);
     };
-  }, [count, active, reduce, factor]);
+  }, [active, count, factor, reduce]);
 
-  return (
-    <canvas
-      ref={ref}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 3,
-      }}
-      aria-hidden="true"
-    />
-  );
+  return <canvas ref={ref} className="meishiki-canvas meishiki-dust" aria-hidden="true" />;
 }
 
 /* ─────────────────────────────────────────
-   Cursor sparkle trail
+   Cursor trail
 ───────────────────────────────────────── */
 function CursorTrail({ targetId = "hero" }) {
   const ref = useRef(null);
@@ -233,15 +225,16 @@ function CursorTrail({ targetId = "hero" }) {
   const lastSpawnRef = useRef(0);
 
   const active = useCanvasActive({ targetId, rootMargin: "320px" });
-  const { reduce, fine } = useDeviceFactor();
+  const { reduce, fine } = useDeviceProfile();
 
   useEffect(() => {
-    if (reduce || !fine) return;
+    if (reduce || !fine) return undefined;
 
     const canvas = ref.current;
     const ctx = canvas?.getContext?.("2d", { alpha: true });
     const host = document.getElementById(targetId);
-    if (!canvas || !ctx || !host) return;
+
+    if (!canvas || !ctx || !host) return undefined;
 
     let raf = 0;
     let W = 0;
@@ -257,6 +250,7 @@ function CursorTrail({ targetId = "hero" }) {
       if (!active) return;
 
       const now = performance.now();
+
       if (now - lastSpawnRef.current < 18) return;
       lastSpawnRef.current = now;
 
@@ -264,31 +258,34 @@ function CursorTrail({ targetId = "hero" }) {
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 2; i += 1) {
         sparksRef.current.push({
           x: mx + rand(-4, 4),
           y: my + rand(-4, 4),
           vx: rand(-0.8, 0.8),
-          vy: rand(-1.5, -0.4),
-          r: rand(1, 2.8),
+          vy: rand(-1.4, -0.25),
+          r: rand(1, 2.6),
           life: 1,
-          decay: rand(0.022, 0.05),
-          hue: rand(260, 310),
+          decay: rand(0.025, 0.052),
+          hue: rand(262, 306),
         });
       }
 
-      if (sparksRef.current.length > 170) {
-        sparksRef.current.splice(0, sparksRef.current.length - 170);
+      if (sparksRef.current.length > 160) {
+        sparksRef.current.splice(0, sparksRef.current.length - 160);
       }
     };
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
+
       if (!active) return;
 
       const list = sparksRef.current;
-      for (let i = list.length - 1; i >= 0; i--) {
+
+      for (let i = list.length - 1; i >= 0; i -= 1) {
         const s = list[i];
+
         s.x += s.vx;
         s.y += s.vy;
         s.vy *= 0.97;
@@ -299,10 +296,9 @@ function CursorTrail({ targetId = "hero" }) {
           continue;
         }
 
-        const a = s.life * 0.7;
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r * s.life, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${s.hue},90%,82%,${a})`;
+        ctx.fillStyle = `hsla(${s.hue}, 92%, 82%, ${s.life * 0.65})`;
         ctx.fill();
       }
 
@@ -310,6 +306,7 @@ function CursorTrail({ targetId = "hero" }) {
     };
 
     resize();
+
     window.addEventListener("resize", resize, { passive: true });
     host.addEventListener("pointermove", onMove, { passive: true });
 
@@ -323,93 +320,84 @@ function CursorTrail({ targetId = "hero" }) {
       sparksRef.current = [];
       ctx.clearRect(0, 0, W, H);
     };
-  }, [targetId, active, reduce, fine]);
+  }, [active, fine, reduce, targetId]);
 
-  return (
-    <canvas
-      ref={ref}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 11,
-      }}
-      aria-hidden="true"
-    />
-  );
+  return <canvas ref={ref} className="meishiki-canvas meishiki-cursor" aria-hidden="true" />;
 }
 
 /* ─────────────────────────────────────────
    Constellation
 ───────────────────────────────────────── */
 function Constellation() {
-  const nodes = [
-    { x: "72%", y: "18%" },
-    { x: "81%", y: "28%" },
-    { x: "76%", y: "40%" },
-    { x: "88%", y: "35%" },
-    { x: "83%", y: "52%" },
-    { x: "70%", y: "58%" },
-    { x: "91%", y: "62%" },
-    { x: "78%", y: "72%" },
-  ];
-  const edges = [
-    [0, 1],
-    [1, 2],
-    [1, 3],
-    [2, 4],
-    [3, 4],
-    [4, 5],
-    [4, 6],
-    [5, 7],
-    [6, 7],
-  ];
+  const nodes = useMemo(
+    () => [
+      { x: "72%", y: "17%" },
+      { x: "81%", y: "28%" },
+      { x: "75%", y: "40%" },
+      { x: "88%", y: "35%" },
+      { x: "83%", y: "52%" },
+      { x: "70%", y: "58%" },
+      { x: "91%", y: "62%" },
+      { x: "78%", y: "72%" },
+    ],
+    []
+  );
+
+  const edges = useMemo(
+    () => [
+      [0, 1],
+      [1, 2],
+      [1, 3],
+      [2, 4],
+      [3, 4],
+      [4, 5],
+      [4, 6],
+      [5, 7],
+      [6, 7],
+    ],
+    []
+  );
 
   return (
-    <svg
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 4,
-      }}
-    >
+    <svg className="meishiki-constellation" aria-hidden="true">
       <defs>
         <style>{`
-          @keyframes dash { to { stroke-dashoffset: 0; } }
-          @keyframes twinkle { 0%,100%{opacity:0.15} 50%{opacity:0.7} }
-          .cline { stroke-dasharray: 120; stroke-dashoffset: 120; animation: dash 2.8s ease forwards; }
-          .cnode { animation: twinkle 3s ease-in-out infinite; }
+          @keyframes meishikiDash { to { stroke-dashoffset: 0; } }
+          @keyframes meishikiTwinkle { 0%,100%{opacity:0.14} 50%{opacity:0.72} }
+          .meishiki-cline {
+            stroke-dasharray: 120;
+            stroke-dashoffset: 120;
+            animation: meishikiDash 2.8s cubic-bezier(.22,.56,.18,1) forwards;
+          }
+          .meishiki-cnode {
+            animation: meishikiTwinkle 3.2s ease-in-out infinite;
+          }
         `}</style>
       </defs>
 
-      {edges.map(([a, b], i) => (
+      {edges.map(([a, b], index) => (
         <line
-          key={i}
+          key={`${a}-${b}`}
           x1={nodes[a].x}
           y1={nodes[a].y}
           x2={nodes[b].x}
           y2={nodes[b].y}
-          stroke="rgba(200,160,255,0.22)"
-          strokeWidth="0.7"
-          className="cline"
-          style={{ animationDelay: `${0.3 + i * 0.22}s` }}
+          stroke="rgba(208,170,255,0.22)"
+          strokeWidth="0.72"
+          className="meishiki-cline"
+          style={{ animationDelay: `${0.35 + index * 0.22}s` }}
         />
       ))}
 
-      {nodes.map((n, i) => (
+      {nodes.map((node, index) => (
         <circle
-          key={i}
-          cx={n.x}
-          cy={n.y}
+          key={`${node.x}-${node.y}`}
+          cx={node.x}
+          cy={node.y}
           r="2.2"
-          fill="rgba(230,200,255,0.7)"
-          className="cnode"
-          style={{ animationDelay: `${i * 0.4}s` }}
+          fill="rgba(234,210,255,0.72)"
+          className="meishiki-cnode"
+          style={{ animationDelay: `${index * 0.36}s` }}
         />
       ))}
     </svg>
@@ -417,42 +405,26 @@ function Constellation() {
 }
 
 /* ─────────────────────────────────────────
-   Space texture layer
+   Space texture
 ───────────────────────────────────────── */
 function SpaceTexture() {
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 1,
-        pointerEvents: "none",
-        backgroundImage: `url(${SPACE_TEXTURE})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center center",
-        opacity: 0.12,
-        mixBlendMode: "screen",
-        filter: "saturate(0.9) contrast(1.05) brightness(0.7)",
-        transform: "scale(1.03)",
-      }}
-    />
-  );
+  return <div className="meishiki-space-texture" aria-hidden="true" />;
 }
 
 /* ─────────────────────────────────────────
-   Moon artifact (PNG + 立体感)
+   Moon artifact
 ───────────────────────────────────────── */
 function MoonArtifact({ targetId = "hero" }) {
-  const wrapRef = useRef(null);
-  const { reduce, fine } = useDeviceFactor();
+  const tiltRef = useRef(null);
+  const { reduce, fine } = useDeviceProfile();
 
   useEffect(() => {
-    if (reduce) return;
+    if (reduce) return undefined;
 
     const host = document.getElementById(targetId);
-    const el = wrapRef.current;
-    if (!host || !el) return;
+    const el = tiltRef.current;
+
+    if (!host || !el) return undefined;
 
     let raf = 0;
     let tx = 0;
@@ -477,9 +449,8 @@ function MoonArtifact({ targetId = "hero" }) {
 
       el.style.transform = `
         translate3d(${cx}px, ${cy}px, 0)
-        rotateX(${cy * 0.35}deg)
-        rotateY(${cx * 0.45}deg)
-        scale(1)
+        rotateX(${cy * 0.34}deg)
+        rotateY(${cx * 0.44}deg)
       `;
 
       raf = requestAnimationFrame(tick);
@@ -492,101 +463,99 @@ function MoonArtifact({ targetId = "hero" }) {
       cancelAnimationFrame(raf);
       host.removeEventListener("pointermove", onMove);
     };
-  }, [reduce, fine, targetId]);
+  }, [fine, reduce, targetId]);
 
   return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        top: "10%",
-        right: "4%",
-        width: "clamp(220px, 26vw, 380px)",
-        aspectRatio: "1 / 1",
-        zIndex: 8,
-        pointerEvents: "none",
-        perspective: "1200px",
-      }}
-    >
-      {/* 奥の光膜 */}
-      <div
-        style={{
-          position: "absolute",
-          inset: "14%",
-          borderRadius: "50%",
-          background:
-            "radial-gradient(circle, rgba(177,135,255,0.20) 0%, rgba(177,135,255,0.10) 34%, rgba(177,135,255,0.04) 56%, rgba(177,135,255,0) 74%)",
-          filter: "blur(20px)",
-          animation: "moonAura 6.5s ease-in-out infinite",
-        }}
-      />
-
-      {/* 外輪 */}
-      <div
-        style={{
-          position: "absolute",
-          inset: "6%",
-          borderRadius: "50%",
-          border: "1px solid rgba(210,180,255,0.16)",
-          boxShadow:
-            "0 0 36px rgba(170,110,255,0.12), inset 0 0 32px rgba(200,160,255,0.06)",
-          animation: "rotateSlow 42s linear infinite",
-        }}
-      />
-
-      {/* 月本体 */}
-      <div
-        ref={wrapRef}
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "grid",
-          placeItems: "center",
-          transformStyle: "preserve-3d",
-          animation: "moonFloat 8s ease-in-out infinite",
-          willChange: "transform",
-        }}
-      >
-        <div
-  aria-hidden="true"
-  style={{
-    position: "absolute",
-    inset: "-6%",
-    borderRadius: "50%",
-    background:
-      "radial-gradient(circle at 35% 40%, rgba(255,255,255,0.06), rgba(140,90,255,0.08) 42%, rgba(0,0,0,0) 70%)",
-    filter: "blur(14px)",
-    opacity: 0.55,
-    mixBlendMode: "screen",
-    pointerEvents: "none",
-    transform: "translateZ(30px)",
-  }}
-/>
-        <img
-          src={MOON_OBJECT}
-          alt=""
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            display: "block",
-            filter:
-              "drop-shadow(0 18px 30px rgba(12,6,22,0.42)) drop-shadow(0 0 28px rgba(190,145,255,0.18))",
-            transform: "translateZ(24px)",
-            userSelect: "none",
-            WebkitUserDrag: "none",
-          }}
-        />
-        
+    <div className="meishiki-moon" aria-hidden="true">
+      <div className="meishiki-moon-aura" />
+      <div className="meishiki-moon-ring" />
+      <div className="meishiki-moon-float">
+        <div ref={tiltRef} className="meishiki-moon-tilt">
+          <div className="meishiki-moon-glass" />
+          <img
+            src={MOON_OBJECT}
+            alt=""
+            className="meishiki-moon-img"
+            loading="eager"
+            decoding="async"
+            draggable="false"
+          />
+        </div>
       </div>
     </div>
   );
 }
 
 /* ─────────────────────────────────────────
-   Decorative helpers
+   UI fragments
 ───────────────────────────────────────── */
-function HexLines({ style }) {
+function InkReveal({ children, delay = 0, className = "" }) {
+  return (
+    <span
+      className={`meishiki-ink ${className}`}
+      style={{ "--delay": `${delay}s` }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function GlowDivider({ delay = 0 }) {
+  return (
+    <div className="meishiki-divider" style={{ "--delay": `${delay}s` }} aria-hidden="true">
+      <span />
+      <i />
+      <span />
+    </div>
+  );
+}
+
+function CTAButton({ onClick, delay = 0 }) {
+  const [ripple, setRipple] = useState(false);
+
+  const handleClick = () => {
+    setRipple(true);
+    window.setTimeout(() => setRipple(false), 620);
+    onClick?.();
+  };
+
+  return (
+    <button
+      type="button"
+      className="meishiki-cta"
+      style={{ "--delay": `${delay}s` }}
+      onClick={handleClick}
+    >
+      {ripple && <span className="meishiki-cta-ripple" aria-hidden="true" />}
+
+      <span className="meishiki-cta-seal" aria-hidden="true">
+        命
+      </span>
+
+      <span className="meishiki-cta-text">命式を起こす</span>
+      <span className="meishiki-cta-arrow" aria-hidden="true">
+        →
+      </span>
+    </button>
+  );
+}
+
+function VerticalSteps() {
+  const steps = ["記入", "年柱", "命式", "印"];
+
+  return (
+    <div className="meishiki-steps" aria-hidden="true">
+      {steps.map((step, index) => (
+        <div className="meishiki-step" key={step}>
+          <span className={index === 0 ? "is-current" : ""}>{step}</span>
+          {index < steps.length - 1 && <i />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HexLines() {
   const lines = [
     [true, true],
     [true, false],
@@ -597,276 +566,12 @@ function HexLines({ style }) {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
-      {lines.map((pair, i) => (
-        <div key={i} style={{ display: "flex", gap: 3 }}>
-          {pair[0] ? (
-            <div
-              style={{
-                width: 20,
-                height: 1.5,
-                background: "rgba(200,160,255,0.45)",
-              }}
-            />
-          ) : (
-            <>
-              <div
-                style={{
-                  width: 8,
-                  height: 1.5,
-                  background: "rgba(200,160,255,0.45)",
-                }}
-              />
-              <div
-                style={{
-                  width: 8,
-                  height: 1.5,
-                  background: "rgba(200,160,255,0.45)",
-                }}
-              />
-            </>
-          )}
-
-          <div style={{ width: 4 }} />
-
-          {pair[1] ? (
-            <div
-              style={{
-                width: 20,
-                height: 1.5,
-                background: "rgba(200,160,255,0.45)",
-              }}
-            />
-          ) : (
-            <>
-              <div
-                style={{
-                  width: 8,
-                  height: 1.5,
-                  background: "rgba(200,160,255,0.45)",
-                }}
-              />
-              <div
-                style={{
-                  width: 8,
-                  height: 1.5,
-                  background: "rgba(200,160,255,0.45)",
-                }}
-              />
-            </>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function InkReveal({ children, delay = 0, style }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        animation: `inkReveal 1.2s cubic-bezier(0.22,1,0.36,1) ${delay}s both`,
-        ...style,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function GlowDivider({ delay = 0 }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        animation: `fadeUp 1s ease ${delay}s both`,
-      }}
-    >
-      <div
-        style={{
-          flex: 1,
-          height: 1,
-          background:
-            "linear-gradient(to right, rgba(180,130,255,0), rgba(180,130,255,0.35), rgba(180,130,255,0))",
-        }}
-      />
-      <div
-        style={{
-          width: 4,
-          height: 4,
-          borderRadius: "50%",
-          background: "rgba(200,160,255,0.6)",
-          boxShadow: "0 0 6px rgba(200,160,255,0.8)",
-        }}
-      />
-      <div
-        style={{
-          flex: 1,
-          height: 1,
-          background:
-            "linear-gradient(to right, rgba(180,130,255,0), rgba(180,130,255,0.35), rgba(180,130,255,0))",
-        }}
-      />
-    </div>
-  );
-}
-
-function CTAButton({ onClick, delay = 0 }) {
-  const [hovered, setHovered] = useState(false);
-  const [ripple, setRipple] = useState(false);
-
-  const handleClick = () => {
-    setRipple(true);
-    setTimeout(() => setRipple(false), 600);
-    onClick?.();
-  };
-
-  return (
-    <button
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={handleClick}
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "14px 32px",
-        borderRadius: 999,
-        border: `1px solid rgba(200,160,255,${hovered ? 0.5 : 0.28})`,
-        background: hovered ? "rgba(160,100,255,0.18)" : "rgba(120,70,200,0.12)",
-        cursor: "pointer",
-        transition: "all 0.35s cubic-bezier(0.22,1,0.36,1)",
-        boxShadow: hovered
-          ? "0 0 32px rgba(160,100,255,0.22), inset 0 0 20px rgba(160,100,255,0.08)"
-          : "0 0 12px rgba(120,70,200,0.1)",
-        animation: `fadeUp 1s ease ${delay}s both`,
-        outline: "none",
-      }}
-    >
-      {ripple && (
-        <span
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "radial-gradient(circle at 50% 50%, rgba(200,160,255,0.28), transparent 70%)",
-            animation: "rippleOut 0.6s ease forwards",
-            borderRadius: 999,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-
-      <span
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          border: "1px solid rgba(200,160,255,0.4)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 11,
-          color: "rgba(220,190,255,0.85)",
-          letterSpacing: "0.05em",
-          background: "rgba(120,70,200,0.15)",
-          flexShrink: 0,
-          transition: "transform 0.35s",
-          transform: hovered ? "rotate(15deg)" : "rotate(0deg)",
-        }}
-      >
-        命
-      </span>
-
-      <span
-        style={{
-          fontSize: 12,
-          letterSpacing: "0.28em",
-          color: "rgba(240,220,255,0.92)",
-          fontWeight: 400,
-        }}
-      >
-        命式を起こす
-      </span>
-
-      <span
-        style={{
-          fontSize: 10,
-          color: "rgba(200,160,255,0.6)",
-          transition: "transform 0.35s",
-          transform: hovered ? "translateX(4px)" : "translateX(0)",
-        }}
-      >
-        →
-      </span>
-    </button>
-  );
-}
-
-function FloatingOrb({ style }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        borderRadius: "50%",
-        filter: "blur(60px)",
-        animation: "orbFloat 8s ease-in-out infinite",
-        pointerEvents: "none",
-        ...style,
-      }}
-    />
-  );
-}
-
-function VerticalSteps() {
-  const steps = ["記入", "年柱", "命式", "印"];
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 0,
-        animation: "fadeUp 1.2s ease 1.5s both",
-      }}
-    >
-      {steps.map((s, i) => (
-        <div
-          key={i}
-          style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
-        >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              border: `1px solid rgba(200,160,255,${i === 0 ? 0.6 : 0.2})`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 9,
-              letterSpacing: "0.1em",
-              color: `rgba(220,190,255,${i === 0 ? 0.9 : 0.45})`,
-              background: i === 0 ? "rgba(160,100,255,0.18)" : "transparent",
-            }}
-          >
-            {s}
-          </div>
-          {i < steps.length - 1 && (
-            <div
-              style={{
-                width: 1,
-                height: 18,
-                background: "rgba(160,100,255,0.2)",
-              }}
-            />
-          )}
+    <div className="meishiki-hex" aria-hidden="true">
+      {lines.map((pair, index) => (
+        <div key={index}>
+          <span className={pair[0] ? "long" : "short"} />
+          <em />
+          <span className={pair[1] ? "long" : "short"} />
         </div>
       ))}
     </div>
@@ -880,605 +585,1098 @@ export default function Hero() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoaded(true), 80);
-    return () => clearTimeout(t);
+    const timer = window.setTimeout(() => setLoaded(true), 80);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const goInput = () => {
     const el = document.getElementById("input");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!el) return;
+
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   return (
-  <section
-  id="hero"
-  className="meishiki-hero"
-  style={{
-    position: "relative",
-    width: "100%",
-    minHeight: "100svh",
-    background: "#0a0610",
-    overflow: "hidden",
-  }}
->
-  <style>{`
-    /* -------------------------------------------------
-      scope reset (NO global reset)
-    ------------------------------------------------- */
-    .meishiki-hero, .meishiki-hero * { box-sizing: border-box; }
-    .meishiki-hero h1, .meishiki-hero p { margin: 0; }
-    .meishiki-hero button { font: inherit; color: inherit; }
+    <section id="hero" className={`meishiki-hero ${loaded ? "is-loaded" : ""}`}>
+      <style>{`
+        .meishiki-hero,
+        .meishiki-hero * {
+          box-sizing: border-box;
+        }
 
-    /* -------------------------------------------------
-      layout helpers
-    ------------------------------------------------- */
-    .hero-wrap{
-      position: relative;
-      z-index: 20;
-      width: 100%;
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: clamp(56px,8vh,104px) clamp(18px,4vw,44px) clamp(44px,7vh,86px);
-      min-height: 100svh;
-      display: flex;
-      flex-direction: column;
-      font-family: 'Noto Serif JP','Hiragino Mincho ProN',serif;
-    }
-    .hero-grid{
-      flex: 1;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 300px;
-      gap: 48px;
-      align-items: center;
-      padding-top: clamp(18px,5vh,56px);
-    }
-    .hero-left{ max-width: 640px; }
-    .hero-right{
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 32px;
-      animation: fadeUp 1.2s ease 0.8s both;
-    }
-    @media (max-width: 980px){
-      .hero-grid{ grid-template-columns: 1fr; gap: 42px; }
-      .hero-right{ display: none; } /* 右の装飾は狭幅では退避（世界観はBG/粒子で維持） */
-    }
+        .meishiki-hero {
+          position: relative;
+          width: 100%;
+          min-height: 100svh;
+          overflow: hidden;
+          background: #09050f;
+          color: rgba(244, 236, 255, 0.92);
+          font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+          isolation: isolate;
+        }
 
-    /* -------------------------------------------------
-      keyframes (keep yours + add missing)
-    ------------------------------------------------- */
-    @keyframes inkReveal {
-      from { opacity: 0; transform: translateY(22px) skewY(2deg); filter: blur(6px); }
-      to   { opacity: 1; transform: translateY(0) skewY(0deg); filter: blur(0px); }
-    }
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(16px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes orbFloat {
-      0%,100% { transform: translateY(0px) scale(1); }
-      50%     { transform: translateY(-24px) scale(1.04); }
-    }
-    @keyframes rippleOut {
-      from { transform: scale(0.8); opacity: 1; }
-      to   { transform: scale(2); opacity: 0; }
-    }
-    @keyframes rotateSlow { to { transform: rotate(360deg); } }
-    @keyframes breathe {
-      0%,100% { opacity: 0.6; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.03); }
-    }
-    @keyframes inkDrop {
-      from { clip-path: inset(0 100% 0 0); }
-      to   { clip-path: inset(0 0% 0 0); }
-    }
-    @keyframes moonFloat {
-      0%,100% { transform: translate3d(0px, 0px, 0) rotateX(0deg) rotateY(0deg); }
-      50% { transform: translate3d(0px, -10px, 0) rotateX(2deg) rotateY(-2deg); }
-    }
-    @keyframes moonAura {
-      0%,100% { opacity: 0.55; transform: scale(1); }
-      50% { opacity: 0.9; transform: scale(1.06); }
-    }
+        .meishiki-hero h1,
+        .meishiki-hero p {
+          margin: 0;
+        }
 
-    /* ★ missing: moonShimmer (you use it in the divider) */
-    @keyframes moonShimmer {
-      0%, 100% { transform: translate3d(-6%,0,0); opacity: 0.18; }
-      50%      { transform: translate3d( 6%,0,0); opacity: 0.35; }
-    }
+        .meishiki-hero button {
+          font: inherit;
+          color: inherit;
+        }
 
-    @media (prefers-reduced-motion: reduce){
-      .meishiki-hero * { animation: none !important; transition: none !important; }
-    }
-  `}</style>
+        .meishiki-bg {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          background:
+            radial-gradient(ellipse at 20% 30%, rgba(130, 60, 200, 0.30) 0%, transparent 55%),
+            radial-gradient(ellipse at 78% 70%, rgba(80, 30, 150, 0.20) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 90%, rgba(60, 20, 110, 0.24) 0%, transparent 60%),
+            linear-gradient(170deg, #0f0818 0%, #09050f 40%, #0d0920 100%);
+        }
 
-  {/* deep bg */}
-  <div
-    aria-hidden="true"
-    style={{
-      position: "absolute",
-      inset: 0,
-      background: [
-        "radial-gradient(ellipse at 20% 30%, rgba(130,60,200,0.28) 0%, transparent 55%)",
-        "radial-gradient(ellipse at 78% 70%, rgba(80,30,150,0.18) 0%, transparent 50%)",
-        "radial-gradient(ellipse at 50% 90%, rgba(60,20,110,0.22) 0%, transparent 60%)",
-        "linear-gradient(170deg, #0f0818 0%, #0a0610 40%, #0d0920 100%)",
-      ].join(","),
-      zIndex: 0,
-    }}
-  />
+        .meishiki-space-texture {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+          background-image: url("${SPACE_TEXTURE}");
+          background-size: cover;
+          background-position: center;
+          opacity: 0.12;
+          mix-blend-mode: screen;
+          filter: saturate(0.92) contrast(1.05) brightness(0.72);
+          transform: scale(1.03);
+        }
 
-  {/* subtle space texture */}
-  <SpaceTexture />
+        .meishiki-veil {
+          position: absolute;
+          inset: 0;
+          z-index: 6;
+          pointer-events: none;
+          background:
+            linear-gradient(90deg, rgba(7, 3, 12, 0.72), rgba(7, 3, 12, 0.34) 36%, rgba(7, 3, 12, 0.12) 64%, rgba(7, 3, 12, 0.40)),
+            linear-gradient(180deg, rgba(7, 3, 12, 0.16), transparent 42%, rgba(7, 3, 12, 0.92));
+        }
 
-  {/* atmospheric veils */}
-  <FloatingOrb
-    style={{
-      top: "10%",
-      left: "-5%",
-      width: 500,
-      height: 400,
-      background:
-        "radial-gradient(circle, rgba(120,50,200,0.22) 0%, transparent 70%)",
-      animationDelay: "0s",
-      zIndex: 0,
-    }}
-  />
-  <FloatingOrb
-    style={{
-      bottom: "15%",
-      right: "-8%",
-      width: 560,
-      height: 420,
-      background:
-        "radial-gradient(circle, rgba(80,20,170,0.16) 0%, transparent 70%)",
-      animationDelay: "3s",
-      zIndex: 0,
-    }}
-  />
-  <FloatingOrb
-    style={{
-      top: "50%",
-      left: "40%",
-      width: 300,
-      height: 280,
-      background:
-        "radial-gradient(circle, rgba(160,90,255,0.10) 0%, transparent 70%)",
-      animationDelay: "5s",
-      zIndex: 0,
-    }}
-  />
+        .meishiki-scan {
+          position: absolute;
+          inset: 0;
+          z-index: 7;
+          pointer-events: none;
+          background-image:
+            repeating-linear-gradient(
+              0deg,
+              rgba(255, 255, 255, 0.012) 0px,
+              rgba(255, 255, 255, 0.012) 1px,
+              transparent 1px,
+              transparent 3px
+            );
+        }
 
-  {/* effects */}
-  <StarField count={260} targetId="hero" />
-  <InkDust count={55} targetId="hero" />
-  <Constellation />
-  <MoonArtifact targetId="hero" />
-  <CursorTrail targetId="hero" />
+        .meishiki-orb {
+          position: absolute;
+          border-radius: 999px;
+          filter: blur(60px);
+          pointer-events: none;
+          animation: meishikiOrbFloat 8s ease-in-out infinite;
+          z-index: 0;
+        }
 
-  {/* outer ring */}
-  <div
-    aria-hidden="true"
-    style={{
-      position: "absolute",
-      top: "5%",
-      right: "3%",
-      width: 140,
-      height: 140,
-      borderRadius: "50%",
-      border: "1px dashed rgba(180,130,255,0.12)",
-      animation: "rotateSlow 40s linear infinite",
-      pointerEvents: "none",
-      zIndex: 5,
-    }}
-  />
+        .meishiki-orb-1 {
+          top: 10%;
+          left: -5%;
+          width: 500px;
+          height: 400px;
+          background: radial-gradient(circle, rgba(120, 50, 200, 0.24) 0%, transparent 70%);
+        }
 
-  {/* scan line */}
-  <div
-    aria-hidden="true"
-    style={{
-      position: "absolute",
-      inset: 0,
-      pointerEvents: "none",
-      zIndex: 6,
-      backgroundImage:
-        "repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px)",
-    }}
-  />
+        .meishiki-orb-2 {
+          bottom: 15%;
+          right: -8%;
+          width: 560px;
+          height: 420px;
+          background: radial-gradient(circle, rgba(80, 20, 170, 0.18) 0%, transparent 70%);
+          animation-delay: 3s;
+        }
 
-  {/* content */}
-  <div className="hero-wrap">
-    {/* top bar */}
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        animation: "fadeUp 0.8s ease 0.1s both",
-        opacity: loaded ? 1 : 0,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          fontSize: 10,
-          letterSpacing: "0.38em",
-          color: "rgba(200,160,255,0.7)",
-        }}
-      >
-        <div
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            border: "1px solid rgba(200,160,255,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 8,
-          }}
-        >
-          命
-        </div>
-        <span>命式</span>
-        <span style={{ opacity: 0.35, letterSpacing: 0 }}>／</span>
-        <span style={{ color: "rgba(200,160,255,0.5)" }}>算命学・年柱</span>
-      </div>
+        .meishiki-orb-3 {
+          top: 50%;
+          left: 40%;
+          width: 300px;
+          height: 280px;
+          background: radial-gradient(circle, rgba(160, 90, 255, 0.11) 0%, transparent 70%);
+          animation-delay: 5s;
+        }
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          fontSize: 10,
-          letterSpacing: "0.24em",
-          color: "rgba(160,120,220,0.55)",
-        }}
-      >
-        <span>保存なし</span>
-        <span style={{ opacity: 0.3 }}>｜</span>
-        <span>課金なし</span>
-      </div>
-    </div>
+        .meishiki-canvas,
+        .meishiki-constellation {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
 
-    {/* center */}
-    <div className="hero-grid">
-      {/* left */}
-      <div className="hero-left">
-        {/* eyebrow */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 26,
-            animation: "fadeUp 0.9s ease 0.3s both",
-          }}
-        >
-          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-            <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "rgba(200,160,255,0.55)",
-                boxShadow: "0 0 6px rgba(200,160,255,0.6)",
-              }}
-            />
-            <div
-              style={{
-                width: 4,
-                height: 4,
-                borderRadius: "50%",
-                background: "rgba(200,160,255,0.3)",
-              }}
-            />
-          </div>
-          <span
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.36em",
-              color: "rgba(200,160,255,0.72)",
-            }}
-          >
-            生年月日から年柱（年干支）を起こす
-          </span>
-        </div>
+        .meishiki-stars {
+          z-index: 2;
+        }
 
-        {/* title (your improved one) */}
-        <div
-          style={{
-            position: "relative",
-            display: "inline-block",
-            isolation: "isolate",
-          }}
-        >
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              left: "-6%",
-              top: "8%",
-              width: "112%",
-              height: "88%",
-              borderRadius: "999px",
-              background:
-                "radial-gradient(circle, rgba(182,136,255,0.18) 0%, rgba(182,136,255,0.08) 28%, rgba(182,136,255,0) 72%)",
-              filter: "blur(26px)",
-              transform: "translateZ(0)",
-              zIndex: 0,
-              pointerEvents: "none",
-            }}
-          />
+        .meishiki-dust {
+          z-index: 3;
+        }
 
-          <h1
-            style={{
-              position: "relative",
-              zIndex: 1,
-              margin: 0,
-              lineHeight: 0.96,
-              letterSpacing: "0.08em",
-            }}
-          >
-            <InkReveal delay={0.5} style={{ display: "block" }}>
-              <span
-                style={{
-                  display: "block",
-                  fontFamily: '"Noto Serif JP", "Yu Mincho", serif',
-                  fontSize: "clamp(28px,3.1vw,42px)",
-                  fontWeight: 500,
-                  letterSpacing: "0.18em",
-                  color: "rgba(236,226,248,0.92)",
-                  textShadow:
-                    "0 0 10px rgba(192,150,255,0.16), 0 0 1px rgba(255,255,255,0.35)",
-                  marginBottom: "0.12em",
-                }}
-              >
-                命式を
-              </span>
-            </InkReveal>
+        .meishiki-constellation {
+          z-index: 4;
+        }
 
-            <InkReveal delay={0.72} style={{ display: "block" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "flex-end",
-                  gap: "0.02em",
-                  fontFamily: '"Noto Serif JP", "Yu Mincho", serif',
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-block",
-                    fontSize: "clamp(52px,7.4vw,98px)",
-                    fontWeight: 500,
-                    letterSpacing: "0.12em",
-                    lineHeight: 0.94,
-                    background:
-                      "linear-gradient(180deg, rgba(250,245,255,0.98) 0%, rgba(228,203,255,0.97) 22%, rgba(196,150,255,0.95) 58%, rgba(236,222,255,0.98) 100%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                    filter:
-                      "drop-shadow(0 0 14px rgba(192,144,255,0.18)) drop-shadow(0 0 28px rgba(120,70,210,0.12))",
-                    textShadow: "none",
-                  }}
-                >
-                  起こす
-                </span>
+        .meishiki-cursor {
+          z-index: 18;
+        }
 
-                <span
-                  style={{
-                    display: "inline-block",
-                    fontSize: "clamp(40px,5.2vw,62px)",
-                    lineHeight: 1,
-                    transform: "translateY(-0.04em)",
-                    color: "rgba(234,214,255,0.94)",
-                    textShadow:
-                      "0 0 10px rgba(196,150,255,0.26), 0 0 22px rgba(160,108,255,0.16)",
-                  }}
-                >
-                  。
-                </span>
-              </span>
-            </InkReveal>
-          </h1>
-        </div>
+        .meishiki-outer-ring {
+          position: absolute;
+          top: 5%;
+          right: 3%;
+          width: 140px;
+          height: 140px;
+          border-radius: 999px;
+          border: 1px dashed rgba(200, 160, 255, 0.13);
+          animation: meishikiRotateSlow 42s linear infinite;
+          pointer-events: none;
+          z-index: 5;
+        }
 
-        {/* ritual line (improved) */}
-        <div
-          aria-hidden="true"
-          style={{
-            width: "clamp(160px,30%,260px)",
-            height: 1,
-            marginTop: 12,
-            marginBottom: 32,
-            position: "relative",
-            opacity: 0.95,
-            animation: "inkDrop 1.4s cubic-bezier(0.22,1,0.36,1) 1.0s both",
-          }}
-        >
-          <span
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(to right, rgba(180,130,255,0), rgba(210,170,255,0.55), rgba(180,130,255,0))",
-              boxShadow: "0 0 18px rgba(160,108,255,0.16)",
-              transform: "translateZ(0)",
-            }}
-          />
-          <span
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              transform: "translate(-50%, -50%)",
-              background: "rgba(240,228,255,0.75)",
-              boxShadow:
-                "0 0 10px rgba(196,150,255,0.32), 0 0 22px rgba(160,108,255,0.18)",
-            }}
-          />
-          <span
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.14) 45%, rgba(255,255,255,0) 70%)",
-              mixBlendMode: "screen",
-              opacity: 0.35,
-              animation: "moonShimmer 6.8s ease-in-out infinite",
-              transform: "translateZ(0)",
-              pointerEvents: "none",
-            }}
-          />
-        </div>
+        .meishiki-moon {
+          position: absolute;
+          top: 9%;
+          right: 4%;
+          width: clamp(220px, 26vw, 380px);
+          aspect-ratio: 1 / 1;
+          z-index: 9;
+          pointer-events: none;
+          perspective: 1200px;
+        }
 
-        {/* body copy */}
-        <div
-          style={{
-            maxWidth: "56ch",
-            fontSize: "clamp(13px,1.4vw,15px)",
-            lineHeight: 2.15,
-            letterSpacing: "0.04em",
-            color: "rgba(210,190,240,0.82)",
-            marginBottom: 38,
-            animation: "fadeUp 1s ease 1.0s both",
-          }}
-        >
-          <p>生年月日を記すと、年柱（年干支）が立ち上がる。</p>
-          <p
-            style={{
-              color: "rgba(190,165,225,0.65)",
-              fontSize: "0.92em",
-              marginTop: 10,
-            }}
-          >
-            断定ではなく、傾向と条件を読むための記録。
-          </p>
-        </div>
+        .meishiki-moon-aura {
+          position: absolute;
+          inset: 14%;
+          border-radius: 999px;
+          background:
+            radial-gradient(
+              circle,
+              rgba(177, 135, 255, 0.22) 0%,
+              rgba(177, 135, 255, 0.10) 34%,
+              rgba(177, 135, 255, 0.04) 56%,
+              transparent 74%
+            );
+          filter: blur(20px);
+          animation: meishikiMoonAura 6.6s ease-in-out infinite;
+        }
 
-        {/* CTA row */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 22,
-            flexWrap: "wrap",
-            marginBottom: 38,
-          }}
-        >
-          <CTAButton onClick={goInput} delay={1.2} />
+        .meishiki-moon-ring {
+          position: absolute;
+          inset: 6%;
+          border-radius: 999px;
+          border: 1px solid rgba(210, 180, 255, 0.16);
+          box-shadow:
+            0 0 36px rgba(170, 110, 255, 0.12),
+            inset 0 0 32px rgba(200, 160, 255, 0.06);
+          animation: meishikiRotateSlow 44s linear infinite;
+        }
 
-          <div
-            style={{
-              fontSize: 11,
-              lineHeight: 1.9,
-              letterSpacing: "0.18em",
-              color: "rgba(180,150,220,0.6)",
-              animation: "fadeUp 1s ease 1.4s both",
-            }}
-          >
-            生年月日を記す（約30秒）
-            <br />
-            <span style={{ color: "rgba(160,130,200,0.45)" }}>
-              任意：出生地・出生時間・名前
+        .meishiki-moon-float {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          animation: meishikiMoonFloat 8s ease-in-out infinite;
+        }
+
+        .meishiki-moon-tilt {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          transform-style: preserve-3d;
+          will-change: transform;
+        }
+
+        .meishiki-moon-glass {
+          position: absolute;
+          inset: -6%;
+          border-radius: 999px;
+          background:
+            radial-gradient(
+              circle at 35% 40%,
+              rgba(255, 255, 255, 0.06),
+              rgba(140, 90, 255, 0.08) 42%,
+              transparent 70%
+            );
+          filter: blur(14px);
+          opacity: 0.55;
+          mix-blend-mode: screen;
+          transform: translateZ(30px);
+        }
+
+        .meishiki-moon-img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          filter:
+            drop-shadow(0 18px 30px rgba(12, 6, 22, 0.42))
+            drop-shadow(0 0 28px rgba(190, 145, 255, 0.18));
+          transform: translateZ(24px);
+          user-select: none;
+          -webkit-user-drag: none;
+        }
+
+        .meishiki-wrap {
+          position: relative;
+          z-index: 20;
+          width: 100%;
+          max-width: 1120px;
+          min-height: 100svh;
+          margin: 0 auto;
+          padding:
+            clamp(56px, 8vh, 104px)
+            clamp(18px, 4vw, 44px)
+            clamp(44px, 7vh, 86px);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .meishiki-topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 20px;
+          opacity: 0;
+          transform: translateY(10px);
+          transition:
+            opacity 0.8s cubic-bezier(.22,.56,.18,1),
+            transform 0.8s cubic-bezier(.22,.56,.18,1);
+        }
+
+        .meishiki-hero.is-loaded .meishiki-topbar {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        .meishiki-brand,
+        .meishiki-status {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 10px;
+          letter-spacing: 0.32em;
+          color: rgba(208, 170, 255, 0.68);
+          white-space: nowrap;
+        }
+
+        .meishiki-brand-seal {
+          width: 18px;
+          height: 18px;
+          border-radius: 999px;
+          border: 1px solid rgba(208, 170, 255, 0.34);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 8px;
+          letter-spacing: 0;
+        }
+
+        .meishiki-status {
+          gap: 14px;
+          color: rgba(178, 142, 220, 0.55);
+        }
+
+        .meishiki-grid {
+          flex: 1;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 300px;
+          gap: 48px;
+          align-items: center;
+          padding-top: clamp(18px, 5vh, 56px);
+        }
+
+        .meishiki-left {
+          max-width: 650px;
+        }
+
+        .meishiki-right {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 32px;
+          animation: meishikiFadeUp 1.2s ease 0.8s both;
+        }
+
+        .meishiki-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 26px;
+          animation: meishikiFadeUp 0.9s ease 0.3s both;
+        }
+
+        .meishiki-eyebrow-dots {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .meishiki-eyebrow-dots i:first-child {
+          width: 6px;
+          height: 6px;
+          border-radius: 999px;
+          background: rgba(208, 170, 255, 0.55);
+          box-shadow: 0 0 8px rgba(208, 170, 255, 0.52);
+        }
+
+        .meishiki-eyebrow-dots i:last-child {
+          width: 4px;
+          height: 4px;
+          border-radius: 999px;
+          background: rgba(208, 170, 255, 0.3);
+        }
+
+        .meishiki-eyebrow span {
+          color: rgba(208, 170, 255, 0.72);
+          font-size: 10px;
+          letter-spacing: 0.32em;
+        }
+
+        .meishiki-title-shell {
+          position: relative;
+          display: inline-block;
+          isolation: isolate;
+        }
+
+        .meishiki-title-glow {
+          position: absolute;
+          left: -6%;
+          top: 8%;
+          z-index: 0;
+          width: 112%;
+          height: 88%;
+          border-radius: 999px;
+          background:
+            radial-gradient(
+              circle,
+              rgba(182, 136, 255, 0.18) 0%,
+              rgba(182, 136, 255, 0.08) 28%,
+              transparent 72%
+            );
+          filter: blur(26px);
+          pointer-events: none;
+        }
+
+        .meishiki-title {
+          position: relative;
+          z-index: 1;
+          margin: 0;
+          line-height: 0.96;
+          letter-spacing: 0.08em;
+        }
+
+        .meishiki-ink {
+          display: inline-block;
+          animation: meishikiInkReveal 1.2s cubic-bezier(0.22, 1, 0.36, 1) var(--delay) both;
+        }
+
+        .meishiki-title-small {
+          display: block;
+          margin-bottom: 0.12em;
+          color: rgba(236, 226, 248, 0.92);
+          font-size: clamp(28px, 3.1vw, 42px);
+          font-weight: 500;
+          letter-spacing: 0.18em;
+          text-shadow:
+            0 0 10px rgba(192, 150, 255, 0.16),
+            0 0 1px rgba(255, 255, 255, 0.35);
+        }
+
+        .meishiki-title-main {
+          display: inline-flex;
+          align-items: flex-end;
+          gap: 0.02em;
+        }
+
+        .meishiki-title-word {
+          display: inline-block;
+          font-size: clamp(52px, 7.4vw, 98px);
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          line-height: 0.94;
+          background:
+            linear-gradient(
+              180deg,
+              rgba(250, 245, 255, 0.98) 0%,
+              rgba(228, 203, 255, 0.97) 22%,
+              rgba(196, 150, 255, 0.95) 58%,
+              rgba(236, 222, 255, 0.98) 100%
+            );
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          filter:
+            drop-shadow(0 0 14px rgba(192, 144, 255, 0.18))
+            drop-shadow(0 0 28px rgba(120, 70, 210, 0.12));
+        }
+
+        .meishiki-title-dot {
+          display: inline-block;
+          color: rgba(234, 214, 255, 0.94);
+          font-size: clamp(40px, 5.2vw, 62px);
+          line-height: 1;
+          transform: translateY(-0.04em);
+          text-shadow:
+            0 0 10px rgba(196, 150, 255, 0.26),
+            0 0 22px rgba(160, 108, 255, 0.16);
+        }
+
+        .meishiki-ritual-line {
+          position: relative;
+          width: clamp(160px, 30%, 260px);
+          height: 1px;
+          margin: 12px 0 32px;
+          opacity: 0.95;
+          animation: meishikiInkDrop 1.4s cubic-bezier(0.22, 1, 0.36, 1) 1s both;
+        }
+
+        .meishiki-ritual-line::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(
+              to right,
+              transparent,
+              rgba(210, 170, 255, 0.55),
+              transparent
+            );
+          box-shadow: 0 0 18px rgba(160, 108, 255, 0.16);
+        }
+
+        .meishiki-ritual-line::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 6px;
+          height: 6px;
+          border-radius: 999px;
+          transform: translate(-50%, -50%);
+          background: rgba(240, 228, 255, 0.75);
+          box-shadow:
+            0 0 10px rgba(196, 150, 255, 0.32),
+            0 0 22px rgba(160, 108, 255, 0.18);
+        }
+
+        .meishiki-copy {
+          max-width: 56ch;
+          margin-bottom: 38px;
+          color: rgba(214, 196, 242, 0.82);
+          font-size: clamp(13px, 1.4vw, 15px);
+          line-height: 2.15;
+          letter-spacing: 0.04em;
+          animation: meishikiFadeUp 1s ease 1s both;
+        }
+
+        .meishiki-copy p + p {
+          margin-top: 10px;
+        }
+
+        .meishiki-copy .muted {
+          color: rgba(194, 166, 226, 0.64);
+          font-size: 0.92em;
+        }
+
+        .meishiki-action {
+          display: flex;
+          align-items: center;
+          gap: 22px;
+          flex-wrap: wrap;
+          margin-bottom: 38px;
+        }
+
+        .meishiki-cta {
+          position: relative;
+          overflow: hidden;
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
+          min-height: 56px;
+          padding: 0 32px;
+          border: 1px solid rgba(208, 170, 255, 0.30);
+          border-radius: 999px;
+          background:
+            linear-gradient(180deg, rgba(160, 100, 255, 0.14), rgba(120, 70, 200, 0.10));
+          color: rgba(240, 220, 255, 0.92);
+          cursor: pointer;
+          box-shadow:
+            0 0 12px rgba(120, 70, 200, 0.10),
+            inset 0 0 20px rgba(160, 100, 255, 0.04);
+          animation: meishikiFadeUp 1s ease var(--delay) both;
+          transition:
+            transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+            border-color 0.35s ease,
+            background 0.35s ease,
+            box-shadow 0.35s ease;
+        }
+
+        .meishiki-cta:hover,
+        .meishiki-cta:focus-visible {
+          transform: translateY(-1px);
+          border-color: rgba(208, 170, 255, 0.52);
+          background:
+            linear-gradient(180deg, rgba(170, 108, 255, 0.20), rgba(120, 70, 200, 0.13));
+          box-shadow:
+            0 0 32px rgba(160, 100, 255, 0.22),
+            inset 0 0 20px rgba(160, 100, 255, 0.08);
+          outline: none;
+        }
+
+        .meishiki-cta-ripple {
+          position: absolute;
+          inset: 0;
+          border-radius: 999px;
+          pointer-events: none;
+          background:
+            radial-gradient(circle at 50% 50%, rgba(208, 170, 255, 0.28), transparent 70%);
+          animation: meishikiRippleOut 0.62s ease forwards;
+        }
+
+        .meishiki-cta-seal {
+          position: relative;
+          z-index: 1;
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          border: 1px solid rgba(208, 170, 255, 0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(120, 70, 200, 0.15);
+          color: rgba(224, 196, 255, 0.86);
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          transition: transform 0.35s ease;
+        }
+
+        .meishiki-cta:hover .meishiki-cta-seal {
+          transform: rotate(15deg);
+        }
+
+        .meishiki-cta-text {
+          position: relative;
+          z-index: 1;
+          font-size: 12px;
+          font-weight: 400;
+          letter-spacing: 0.28em;
+        }
+
+        .meishiki-cta-arrow {
+          position: relative;
+          z-index: 1;
+          color: rgba(208, 170, 255, 0.60);
+          font-size: 10px;
+          transition: transform 0.35s ease;
+        }
+
+        .meishiki-cta:hover .meishiki-cta-arrow {
+          transform: translateX(4px);
+        }
+
+        .meishiki-note {
+          color: rgba(184, 150, 224, 0.60);
+          font-size: 11px;
+          line-height: 1.9;
+          letter-spacing: 0.16em;
+          animation: meishikiFadeUp 1s ease 1.4s both;
+        }
+
+        .meishiki-note span {
+          color: rgba(164, 132, 202, 0.45);
+        }
+
+        .meishiki-divider {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          animation: meishikiFadeUp 1s ease var(--delay) both;
+        }
+
+        .meishiki-divider span {
+          flex: 1;
+          height: 1px;
+          background:
+            linear-gradient(
+              to right,
+              transparent,
+              rgba(190, 145, 255, 0.36),
+              transparent
+            );
+        }
+
+        .meishiki-divider i {
+          width: 4px;
+          height: 4px;
+          border-radius: 999px;
+          background: rgba(208, 170, 255, 0.62);
+          box-shadow: 0 0 8px rgba(208, 170, 255, 0.72);
+        }
+
+        .meishiki-flow {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 24px;
+          color: rgba(184, 150, 224, 0.58);
+          font-size: 10px;
+          letter-spacing: 0.30em;
+          animation: meishikiFadeUp 1s ease 1.6s both;
+        }
+
+        .meishiki-flow i {
+          opacity: 0.35;
+          letter-spacing: 0;
+        }
+
+        .meishiki-disclaimer {
+          margin-top: 26px;
+          color: rgba(164, 132, 202, 0.42);
+          font-size: 10px;
+          line-height: 1.9;
+          letter-spacing: 0.14em;
+          animation: meishikiFadeUp 1s ease 1.8s both;
+        }
+
+        .meishiki-steps {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          animation: meishikiFadeUp 1.2s ease 1.5s both;
+        }
+
+        .meishiki-step {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .meishiki-step span {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          border: 1px solid rgba(208, 170, 255, 0.22);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: rgba(224, 196, 255, 0.45);
+          font-size: 9px;
+          letter-spacing: 0.1em;
+        }
+
+        .meishiki-step span.is-current {
+          border-color: rgba(208, 170, 255, 0.60);
+          background: rgba(160, 100, 255, 0.18);
+          color: rgba(224, 196, 255, 0.90);
+        }
+
+        .meishiki-step i {
+          width: 1px;
+          height: 18px;
+          background: rgba(160, 100, 255, 0.22);
+        }
+
+        .meishiki-hex {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          opacity: 0.68;
+        }
+
+        .meishiki-hex div {
+          display: flex;
+          gap: 3px;
+          align-items: center;
+        }
+
+        .meishiki-hex span {
+          height: 1.5px;
+          background: rgba(208, 170, 255, 0.45);
+        }
+
+        .meishiki-hex .long {
+          width: 20px;
+        }
+
+        .meishiki-hex .short {
+          width: 8px;
+        }
+
+        .meishiki-hex em {
+          width: 4px;
+        }
+
+        .meishiki-kan {
+          width: 56px;
+          height: 56px;
+          border-radius: 999px;
+          border: 1px solid rgba(190, 145, 255, 0.30);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: rgba(224, 196, 255, 0.82);
+          font-size: 22px;
+          letter-spacing: 0.05em;
+          box-shadow: 0 0 20px rgba(160, 100, 255, 0.15);
+          animation: meishikiBreathe 5s ease-in-out infinite;
+        }
+
+        @keyframes meishikiInkReveal {
+          from {
+            opacity: 0;
+            transform: translateY(22px) skewY(2deg);
+            filter: blur(5px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) skewY(0deg);
+            filter: blur(0);
+          }
+        }
+
+        @keyframes meishikiFadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(16px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes meishikiInkDrop {
+          from { clip-path: inset(0 100% 0 0); }
+          to { clip-path: inset(0 0 0 0); }
+        }
+
+        @keyframes meishikiOrbFloat {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-24px) scale(1.04); }
+        }
+
+        @keyframes meishikiRotateSlow {
+          to { transform: rotate(360deg); }
+        }
+
+        @keyframes meishikiMoonFloat {
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50% { transform: translate3d(0, -10px, 0); }
+        }
+
+        @keyframes meishikiMoonAura {
+          0%, 100% {
+            opacity: 0.55;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.9;
+            transform: scale(1.06);
+          }
+        }
+
+        @keyframes meishikiBreathe {
+          0%, 100% {
+            opacity: 0.6;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.03);
+          }
+        }
+
+        @keyframes meishikiRippleOut {
+          from {
+            transform: scale(0.8);
+            opacity: 1;
+          }
+          to {
+            transform: scale(2);
+            opacity: 0;
+          }
+        }
+
+        @media (max-width: 980px) {
+          .meishiki-grid {
+            grid-template-columns: 1fr;
+            gap: 42px;
+          }
+
+          .meishiki-right {
+            display: none;
+          }
+
+          .meishiki-moon {
+            top: 9%;
+            right: -12%;
+            width: clamp(190px, 46vw, 300px);
+            opacity: 0.68;
+          }
+
+          .meishiki-constellation {
+            opacity: 0.62;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .meishiki-wrap {
+            padding:
+              34px
+              20px
+              58px;
+          }
+
+          .meishiki-topbar {
+            align-items: flex-start;
+            gap: 14px;
+          }
+
+          .meishiki-brand {
+            letter-spacing: 0.20em;
+          }
+
+          .meishiki-status {
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            font-size: 9px;
+            letter-spacing: 0.18em;
+          }
+
+          .meishiki-grid {
+            padding-top: 74px;
+          }
+
+          .meishiki-eyebrow {
+            margin-bottom: 20px;
+          }
+
+          .meishiki-eyebrow span {
+            font-size: 9px;
+            letter-spacing: 0.22em;
+          }
+
+          .meishiki-title-small {
+            font-size: clamp(25px, 8vw, 33px);
+            letter-spacing: 0.16em;
+          }
+
+          .meishiki-title-word {
+            font-size: clamp(50px, 16vw, 68px);
+            letter-spacing: 0.08em;
+          }
+
+          .meishiki-title-dot {
+            font-size: clamp(38px, 11vw, 50px);
+          }
+
+          .meishiki-ritual-line {
+            width: 52%;
+            margin-bottom: 28px;
+          }
+
+          .meishiki-copy {
+            max-width: 34ch;
+            margin-bottom: 30px;
+            font-size: 13px;
+            line-height: 2.05;
+          }
+
+          .meishiki-action {
+            gap: 16px;
+            margin-bottom: 30px;
+          }
+
+          .meishiki-cta {
+            min-height: 52px;
+            width: 100%;
+            justify-content: center;
+            padding: 0 24px;
+          }
+
+          .meishiki-note {
+            width: 100%;
+            font-size: 10px;
+          }
+
+          .meishiki-flow {
+            flex-wrap: wrap;
+            gap: 10px;
+            letter-spacing: 0.22em;
+          }
+
+          .meishiki-disclaimer {
+            max-width: 32ch;
+          }
+
+          .meishiki-moon {
+            top: 98px;
+            right: -92px;
+            width: 230px;
+            opacity: 0.46;
+          }
+
+          .meishiki-outer-ring {
+            top: 9%;
+            right: -30px;
+            width: 112px;
+            height: 112px;
+            opacity: 0.44;
+          }
+        }
+
+        @media (max-width: 390px) {
+          .meishiki-wrap {
+            padding-inline: 18px;
+          }
+
+          .meishiki-title-word {
+            font-size: clamp(46px, 15vw, 62px);
+          }
+
+          .meishiki-moon {
+            right: -108px;
+            opacity: 0.40;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .meishiki-hero *,
+          .meishiki-hero *::before,
+          .meishiki-hero *::after {
+            animation: none !important;
+            transition: none !important;
+            scroll-behavior: auto !important;
+          }
+        }
+      `}</style>
+
+      <div className="meishiki-bg" aria-hidden="true" />
+      <SpaceTexture />
+
+      <div className="meishiki-orb meishiki-orb-1" aria-hidden="true" />
+      <div className="meishiki-orb meishiki-orb-2" aria-hidden="true" />
+      <div className="meishiki-orb meishiki-orb-3" aria-hidden="true" />
+
+      <StarField count={260} targetId="hero" />
+      <InkDust count={58} targetId="hero" />
+      <Constellation />
+      <MoonArtifact targetId="hero" />
+      <CursorTrail targetId="hero" />
+
+      <div className="meishiki-outer-ring" aria-hidden="true" />
+      <div className="meishiki-scan" aria-hidden="true" />
+      <div className="meishiki-veil" aria-hidden="true" />
+
+      <div className="meishiki-wrap">
+        <div className="meishiki-topbar">
+          <div className="meishiki-brand">
+            <span className="meishiki-brand-seal" aria-hidden="true">
+              命
+            </span>
+            <span>命式</span>
+            <span aria-hidden="true" style={{ opacity: 0.35, letterSpacing: 0 }}>
+              ／
+            </span>
+            <span style={{ color: "rgba(208, 170, 255, 0.50)" }}>
+              算命学・年柱
             </span>
           </div>
+
+          <div className="meishiki-status" aria-label="無料、登録不要、保存なし">
+            <span>無料</span>
+            <span>登録不要</span>
+            <span>保存なし</span>
+          </div>
         </div>
 
-        <GlowDivider delay={1.5} />
+        <div className="meishiki-grid">
+          <div className="meishiki-left">
+            <div className="meishiki-eyebrow">
+              <span className="meishiki-eyebrow-dots" aria-hidden="true">
+                <i />
+                <i />
+              </span>
+              <span>生年月日から年柱（年干支）を起こす</span>
+            </div>
 
-        {/* small steps */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginTop: 24,
-            fontSize: 10,
-            letterSpacing: "0.30em",
-            color: "rgba(180,150,220,0.6)",
-            animation: "fadeUp 1s ease 1.6s both",
-          }}
-        >
-          <span>記す</span>
-          <span style={{ opacity: 0.35, letterSpacing: 0 }}>—</span>
-          <span>年柱</span>
-          <span style={{ opacity: 0.35, letterSpacing: 0 }}>—</span>
-          <span>印</span>
-        </div>
+            <div className="meishiki-title-shell">
+              <div className="meishiki-title-glow" aria-hidden="true" />
 
-        {/* disclaimer */}
-        <div
-          style={{
-            marginTop: 26,
-            fontSize: 10,
-            lineHeight: 1.9,
-            letterSpacing: "0.14em",
-            color: "rgba(160,130,200,0.42)",
-            animation: "fadeUp 1s ease 1.8s both",
-          }}
-        >
-          ※ これは予言ではありません。あなたの判断と行動が、現実をつくります。
+              <h1 className="meishiki-title">
+                <InkReveal delay={0.5} className="meishiki-title-small">
+                  命式を
+                </InkReveal>
+
+                <InkReveal delay={0.72} className="meishiki-title-main">
+                  <span className="meishiki-title-word">起こす</span>
+                  <span className="meishiki-title-dot">。</span>
+                </InkReveal>
+              </h1>
+            </div>
+
+            <div className="meishiki-ritual-line" aria-hidden="true" />
+
+            <div className="meishiki-copy">
+              <p>生年月日を記すと、年柱（年干支）が立ち上がる。</p>
+              <p className="muted">
+                断定ではなく、傾向と条件を読むための記録。
+              </p>
+            </div>
+
+            <div className="meishiki-action">
+              <CTAButton onClick={goInput} delay={1.2} />
+
+              <p className="meishiki-note">
+                生年月日を記す（約30秒）
+                <br />
+                <span>任意：出生地・出生時間・名前</span>
+              </p>
+            </div>
+
+            <GlowDivider delay={1.5} />
+
+            <div className="meishiki-flow" aria-hidden="true">
+              <span>記す</span>
+              <i>—</i>
+              <span>年柱</span>
+              <i>—</i>
+              <span>印</span>
+            </div>
+
+            <p className="meishiki-disclaimer">
+              ※ これは予言ではありません。あなたの判断と行動が、現実をつくります。
+            </p>
+          </div>
+
+          <div className="meishiki-right" aria-hidden="true">
+            <VerticalSteps />
+            <HexLines />
+            <div className="meishiki-kan">干</div>
+          </div>
         </div>
       </div>
-
-      {/* right (auto-hidden on narrow) */}
-      <div className="hero-right">
-        <VerticalSteps />
-        <HexLines style={{ opacity: 0.7 }} />
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            border: "1px solid rgba(180,130,255,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 22,
-            color: "rgba(220,190,255,0.8)",
-            boxShadow: "0 0 20px rgba(160,100,255,0.15)",
-            animation: "breathe 5s ease-in-out infinite",
-            letterSpacing: "0.05em",
-          }}
-        >
-          干
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {/* vignette */}
-  <div
-    aria-hidden="true"
-    style={{
-      position: "absolute",
-      inset: "auto 0 0 0",
-      height: "18vh",
-      background: "linear-gradient(to top, rgba(8,4,14,0.9), transparent)",
-      pointerEvents: "none",
-      zIndex: 7,
-    }}
-  />
-  <div
-    aria-hidden="true"
-    style={{
-      position: "absolute",
-      inset: "0 auto 0 0",
-      width: "12%",
-      background: "linear-gradient(to right, rgba(8,4,14,0.7), transparent)",
-      pointerEvents: "none",
-      zIndex: 7,
-    }}
-  />
-</section>
+    </section>
   );
 }

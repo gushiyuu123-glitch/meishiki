@@ -4,133 +4,197 @@ import { buildCopyText, buildMemo, formatMeta } from "../data/meishikiMemo";
 
 const SPACE_TEXTURE = "/meishiki/space-texture2.png";
 
-/* ─── hooks ─── */
-function useReduceMotion() {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!mq) return;
-    const on = () => setReduce(mq.matches);
-    on();
-    mq.addEventListener?.("change", on);
-    return () => mq.removeEventListener?.("change", on);
-  }, []);
-  return reduce;
+/* ─────────────────────────────────────────
+   Utility
+───────────────────────────────────────── */
+const rand = (a, b) => Math.random() * (b - a) + a;
+
+function fallbackCopyText(text) {
+  try {
+    const textarea = document.createElement("textarea");
+
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-1000px";
+    textarea.style.left = "-1000px";
+    textarea.style.opacity = "0";
+
+    document.body.appendChild(textarea);
+
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const ok = document.execCommand?.("copy");
+
+    document.body.removeChild(textarea);
+
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
 }
 
-function useIsMobile() {
-  const [mobile, setMobile] = useState(false);
+/* ─────────────────────────────────────────
+   Device profile
+───────────────────────────────────────── */
+function useDeviceProfile() {
+  const [profile, setProfile] = useState({
+    reduce: false,
+    mobile: false,
+    fine: false,
+    factor: 0.55,
+  });
+
   useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check, { passive: true });
-    return () => window.removeEventListener("resize", check);
+    const update = () => {
+      const reduce = Boolean(
+        window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+      );
+
+      const fine = Boolean(
+        window.matchMedia?.("(pointer: fine)")?.matches &&
+          window.matchMedia?.("(hover: hover)")?.matches
+      );
+
+      const mobile = window.innerWidth < 768;
+
+      setProfile({
+        reduce,
+        mobile,
+        fine,
+        factor: fine ? 1 : 0.52,
+      });
+    };
+
+    update();
+
+    window.addEventListener("resize", update, { passive: true });
+
+    const reduceMq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    reduceMq?.addEventListener?.("change", update);
+
+    return () => {
+      window.removeEventListener("resize", update);
+      reduceMq?.removeEventListener?.("change", update);
+    };
   }, []);
-  return mobile;
+
+  return profile;
 }
 
-function usePerfFactor() {
-  const [factor, setFactor] = useState(0.7);
-  useEffect(() => {
-    const fine =
-      window.matchMedia?.("(pointer: fine)")?.matches &&
-      window.matchMedia?.("(hover: hover)")?.matches;
-    setFactor(fine ? 1 : 0.55); // SP：星の数を減らす
-  }, []);
-  return factor;
-}
+function useCanvasActive({ targetId = "output", rootMargin = "360px" } = {}) {
+  const [active, setActive] = useState(false);
 
-function useCanvasActive({ targetId = "output", rootMargin = "320px" } = {}) {
-  const [active, setActive] = useState(true);
   useEffect(() => {
     const el = document.getElementById(targetId);
-    if (!el) return;
+    if (!el) return undefined;
+
     const io = new IntersectionObserver(
-      ([entry]) => setActive(entry.isIntersecting),
-      { root: null, rootMargin, threshold: 0 }
+      ([entry]) => {
+        setActive(entry.isIntersecting);
+      },
+      {
+        root: null,
+        rootMargin,
+        threshold: 0,
+      }
     );
+
     io.observe(el);
+
     return () => io.disconnect();
   }, [targetId, rootMargin]);
+
   return active;
 }
 
 function setupCanvasDpr(canvas, ctx) {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
   const dpr = Math.min(
     window.devicePixelRatio || 1,
     window.innerWidth < 768 ? 1.5 : 2
   );
-  const rect = canvas.getBoundingClientRect();
-  const W = Math.max(1, Math.floor(rect.width));
-  const H = Math.max(1, Math.floor(rect.height));
-  canvas.width = Math.floor(W * dpr);
-  canvas.height = Math.floor(H * dpr);
+
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { W, H };
+
+  return { W: width, H: height };
 }
 
-const rand = (a, b) => Math.random() * (b - a) + a;
-
-/* ─── Canvas: StarField ─── */
-function StarField({ targetId = "output", count = 160, z = 2 }) {
+/* ─────────────────────────────────────────
+   Canvas: Star field
+───────────────────────────────────────── */
+function StarField({ targetId = "output", count = 170, z = 2 }) {
   const ref = useRef(null);
-  const active = useCanvasActive({ targetId, rootMargin: "420px" });
-  const reduce = useReduceMotion();
-  const factor = usePerfFactor();
+  const active = useCanvasActive({ targetId, rootMargin: "460px" });
+  const { reduce, factor } = useDeviceProfile();
 
   useEffect(() => {
-    if (reduce) return;
+    if (reduce) return undefined;
+
     const canvas = ref.current;
     const ctx = canvas?.getContext?.("2d", { alpha: true });
-    if (!canvas || !ctx) return;
 
-    let raf = 0,
-      W = 0,
-      H = 0,
-      stars = [];
+    if (!canvas || !ctx) return undefined;
+
+    let raf = 0;
+    let W = 0;
+    let H = 0;
+    let stars = [];
 
     const build = () => {
-      const s = setupCanvasDpr(canvas, ctx);
-      W = s.W;
-      H = s.H;
-      const n = Math.max(40, Math.floor(count * factor));
-      stars = Array.from({ length: n }, () => ({
+      const size = setupCanvasDpr(canvas, ctx);
+
+      W = size.W;
+      H = size.H;
+
+      const amount = Math.max(40, Math.floor(count * factor));
+
+      stars = Array.from({ length: amount }, () => ({
         x: rand(0, W),
         y: rand(0, H),
-        r: rand(0.25, 1.35),
-        a: rand(0.08, 0.55),
-        tw: rand(0.004, 0.018),
+        r: rand(0.24, 1.28),
+        a: rand(0.07, 0.52),
         phase: rand(0, Math.PI * 2),
-        drift: rand(-0.14, 0.14),
+        drift: rand(-0.13, 0.13),
       }));
     };
 
-    const draw = (t) => {
+    const draw = (timeStamp) => {
       ctx.clearRect(0, 0, W, H);
-      if (!active) {
-        raf = requestAnimationFrame(draw);
-        return;
-      }
 
-      const time = t * 0.001;
-      for (const s of stars) {
+      if (!active) return;
+
+      const time = timeStamp * 0.001;
+
+      for (const star of stars) {
         const alpha = Math.max(
           0.02,
-          s.a * (0.55 + 0.45 * Math.sin(time * 1.2 + s.phase))
+          star.a * (0.55 + 0.45 * Math.sin(time * 1.18 + star.phase))
         );
-        const x = s.x + Math.sin(time * 0.22 + s.phase) * 1.1;
-        const y = s.y + Math.cos(time * 0.18 + s.phase) * 0.9;
-        s.x += s.drift * 0.018;
-        if (s.x < -20) s.x = W + 20;
-        if (s.x > W + 20) s.x = -20;
+
+        const x = star.x + Math.sin(time * 0.22 + star.phase) * 1.08;
+        const y = star.y + Math.cos(time * 0.18 + star.phase) * 0.88;
+
+        star.x += star.drift * 0.018;
+
+        if (star.x < -20) star.x = W + 20;
+        if (star.x > W + 20) star.x = -20;
 
         ctx.beginPath();
-        ctx.fillStyle = `rgba(236,220,255,${alpha})`;
-        ctx.arc(x, y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(236, 220, 255, ${alpha})`;
+        ctx.arc(x, y, star.r, 0, Math.PI * 2);
         ctx.fill();
 
-        if (s.r > 1.05 && alpha > 0.22) {
-          ctx.strokeStyle = `rgba(210,170,255,${alpha * 0.18})`;
+        if (star.r > 1.05 && alpha > 0.22) {
+          ctx.strokeStyle = `rgba(210, 170, 255, ${alpha * 0.18})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(x - 3, y);
@@ -140,17 +204,28 @@ function StarField({ targetId = "output", count = 160, z = 2 }) {
           ctx.stroke();
         }
       }
+
       raf = requestAnimationFrame(draw);
     };
 
     build();
-    window.addEventListener("resize", build, { passive: true });
-    raf = requestAnimationFrame(draw);
+
+    const onResize = () => build();
+
+    window.addEventListener("resize", onResize, { passive: true });
+
+    if (active) {
+      raf = requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, W, H);
+    }
+
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("resize", build);
+      window.removeEventListener("resize", onResize);
+      ctx.clearRect(0, 0, W, H);
     };
-  }, [active, reduce, factor, count]);
+  }, [active, count, factor, reduce]);
 
   return (
     <canvas
@@ -163,84 +238,98 @@ function StarField({ targetId = "output", count = 160, z = 2 }) {
         height: "100%",
         pointerEvents: "none",
         zIndex: z,
-        opacity: 0.7,
+        opacity: 0.68,
       }}
     />
   );
 }
 
-/* ─── Canvas: ShootingStar ─── */
+/* ─────────────────────────────────────────
+   Canvas: Shooting star
+───────────────────────────────────────── */
 function ShootingStar({ targetId = "output", z = 3 }) {
   const ref = useRef(null);
-  const active = useCanvasActive({ targetId, rootMargin: "420px" });
-  const reduce = useReduceMotion();
-  const factor = usePerfFactor();
+  const active = useCanvasActive({ targetId, rootMargin: "460px" });
+  const { reduce, factor } = useDeviceProfile();
 
   useEffect(() => {
-    if (reduce) return;
+    if (reduce) return undefined;
+
     const canvas = ref.current;
     const ctx = canvas?.getContext?.("2d", { alpha: true });
-    if (!canvas || !ctx) return;
 
-    let raf = 0,
-      W = 0,
-      H = 0,
-      t0 = 0;
+    if (!canvas || !ctx) return undefined;
+
+    let raf = 0;
+    let W = 0;
+    let H = 0;
+    let start = 0;
 
     const reset = () => {
-      const s = setupCanvasDpr(canvas, ctx);
-      W = s.W;
-      H = s.H;
+      const size = setupCanvasDpr(canvas, ctx);
+
+      W = size.W;
+      H = size.H;
     };
 
-    const draw = (t) => {
+    const draw = (timeStamp) => {
       ctx.clearRect(0, 0, W, H);
-      if (!active) {
-        raf = requestAnimationFrame(draw);
-        return;
-      }
-      if (!t0) t0 = t;
 
-      const phase = ((t - t0) / 1000) % 20;
+      if (!active) return;
+
+      if (!start) start = timeStamp;
+
+      const phase = ((timeStamp - start) / 1000) % 20;
+
       if (phase < 1.4) {
-        const p = phase / 1.4;
-        const x0 = W * 0.16 + p * W * 0.48;
-        const y0 = H * 0.12 + p * H * 0.22;
+        const progress = phase / 1.4;
+        const x = W * 0.16 + progress * W * 0.48;
+        const y = H * 0.12 + progress * H * 0.22;
         const tail = 150 * factor;
 
         const grad = ctx.createLinearGradient(
-          x0,
-          y0,
-          x0 - tail * 0.92,
-          y0 - tail * 0.55
+          x,
+          y,
+          x - tail * 0.92,
+          y - tail * 0.55
         );
-        grad.addColorStop(0, "rgba(244,232,255,0.60)");
-        grad.addColorStop(0.3, "rgba(196,154,255,0.34)");
-        grad.addColorStop(1, "rgba(124,88,255,0)");
+
+        grad.addColorStop(0, "rgba(244, 232, 255, 0.60)");
+        grad.addColorStop(0.3, "rgba(196, 154, 255, 0.34)");
+        grad.addColorStop(1, "rgba(124, 88, 255, 0)");
 
         ctx.strokeStyle = grad;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x0 - tail * 0.92, y0 - tail * 0.55);
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - tail * 0.92, y - tail * 0.55);
         ctx.stroke();
 
-        ctx.fillStyle = "rgba(244,232,255,0.66)";
+        ctx.fillStyle = "rgba(244, 232, 255, 0.66)";
         ctx.beginPath();
-        ctx.arc(x0, y0, 1.8, 0, Math.PI * 2);
+        ctx.arc(x, y, 1.8, 0, Math.PI * 2);
         ctx.fill();
       }
+
       raf = requestAnimationFrame(draw);
     };
 
     reset();
+
     window.addEventListener("resize", reset, { passive: true });
-    raf = requestAnimationFrame(draw);
+
+    if (active) {
+      raf = requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, W, H);
+    }
+
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", reset);
+      ctx.clearRect(0, 0, W, H);
     };
-  }, [active, reduce, factor]);
+  }, [active, factor, reduce]);
 
   return (
     <canvas
@@ -253,23 +342,25 @@ function ShootingStar({ targetId = "output", z = 3 }) {
         height: "100%",
         pointerEvents: "none",
         zIndex: z,
-        opacity: 0.65,
+        opacity: 0.64,
       }}
     />
   );
 }
 
-/* ─── SealMark ─── */
+/* ─────────────────────────────────────────
+   UI parts
+───────────────────────────────────────── */
 function SealMark({ active }) {
   return (
     <div
       aria-hidden="true"
       className={[
         "mt-10 inline-flex items-center gap-3 transition-all duration-[900ms]",
-        active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-[6px]",
+        active ? "translate-y-0 opacity-100" : "translate-y-[6px] opacity-0",
       ].join(" ")}
     >
-      <span className="h-[10px] w-[10px] rounded-full border border-white/20 bg-white/5" />
+      <span className="h-[10px] w-[10px] rounded-full border border-white/20 bg-white/5 shadow-[0_0_12px_rgba(200,160,255,0.16)]" />
       <span className="text-[11px] tracking-[0.28em] text-[color:var(--text-muted)]">
         印
       </span>
@@ -278,10 +369,9 @@ function SealMark({ active }) {
   );
 }
 
-/* ─── Block ─── */
 function Block({ label, subtitle, desc, img, children }) {
   return (
-    <section className="border-t border-white/10 pt-6 md:pt-7">
+    <section className="group border-t border-white/10 pt-6 md:pt-7">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
         <div className="flex items-center gap-3">
           {img && (
@@ -291,47 +381,53 @@ function Block({ label, subtitle, desc, img, children }) {
               aria-hidden="true"
               loading="lazy"
               decoding="async"
-              className="h-[28px] w-[28px] flex-shrink-0 rounded-full border border-white/12 bg-white/5 object-cover"
+              draggable="false"
+              className="
+                h-[28px] w-[28px] flex-shrink-0 rounded-full
+                border border-white/12 bg-white/5 object-cover
+                shadow-[0_0_20px_rgba(180,130,255,0.08)]
+              "
             />
           )}
+
           <p className="text-[11px] tracking-[0.28em] text-[color:var(--text-secondary)]">
             【{label}】
           </p>
         </div>
+
         {(subtitle || desc) && (
           <p className="ml-[40px] text-[10px] tracking-[0.16em] text-[color:var(--text-faint)] sm:ml-0">
-            {subtitle}
+            {subtitle || desc}
           </p>
         )}
       </div>
 
-      <div className="text-[14px] leading-[2.15] tracking-[0.02em] text-[color:var(--text-primary)] sm:text-[15px]">
+      <div className="text-[14px] leading-[2.18] tracking-[0.025em] text-[color:var(--text-primary)] sm:text-[15px]">
         {children}
       </div>
     </section>
   );
 }
 
-/* ─── Meta row ─── */
 function MetaRow({ meta }) {
   if (!meta?.length) return null;
+
   return (
     <div className="mt-5 flex flex-col gap-y-1.5 sm:flex-row sm:flex-wrap sm:gap-x-5 sm:gap-y-2">
-      {meta.map(([k, v]) => (
+      {meta.map(([key, value]) => (
         <span
-          key={k}
+          key={key}
           className="inline-flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.16em] text-[color:var(--text-muted)] sm:text-[11px]"
         >
-          <span className="opacity-75">{k}</span>
+          <span className="opacity-75">{key}</span>
           <span className="opacity-30">—</span>
-          <span className="text-white/78">{v}</span>
+          <span className="text-white/78">{value}</span>
         </span>
       ))}
     </div>
   );
 }
 
-/* ─── ActionButton ─── */
 function ActionButton({ onClick, children, done }) {
   return (
     <button
@@ -354,25 +450,53 @@ function ActionButton({ onClick, children, done }) {
   );
 }
 
-/* ─── clipboard fallback ─── */
-function fallbackCopyText(text) {
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.top = "-1000px";
-    ta.style.left = "-1000px";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    ta.setSelectionRange(0, ta.value.length);
-    const ok = document.execCommand?.("copy");
-    document.body.removeChild(ta);
-    return !!ok;
-  } catch {
-    return false;
-  }
+function Toast({ children }) {
+  if (!children) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="
+        -mt-2 mb-8 inline-flex max-w-[560px]
+        rounded-[14px] border border-white/12 bg-white/5
+        px-4 py-3 text-[11px] leading-[1.9]
+        tracking-[0.12em] text-white/80
+        backdrop-blur
+      "
+    >
+      {children}
+    </div>
+  );
+}
+
+function MethodToggle({ open, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-controls="meishiki-method"
+      className="
+        flex min-h-[44px] w-full items-center justify-between gap-6
+        focus:outline-none focus-visible:ring-2
+        focus-visible:ring-[color:var(--mist-400)]/30
+      "
+    >
+      <p className="text-[11px] tracking-[0.30em] text-[color:var(--text-secondary)]">
+        【算出根拠】
+      </p>
+
+      <span
+        className={[
+          "text-[10px] tracking-[0.14em] text-white/45 transition-all duration-200",
+          open ? "text-white/70" : "",
+        ].join(" ")}
+      >
+        {open ? "閉じる" : "開く"}
+      </span>
+    </button>
+  );
 }
 
 /* ═══════════════════════════════════════════════
@@ -380,29 +504,29 @@ function fallbackCopyText(text) {
 ═══════════════════════════════════════════════ */
 export default function OutputSection({ formData }) {
   const [rootRef, shown] = useAqReveal();
-  const reduce = useReduceMotion();
-  const isMobile = useIsMobile();
+  const { reduce, mobile } = useDeviceProfile();
 
   const [sealed, setSealed] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const [shared, setShared] = useState(false);
-  const [sharedKind, setSharedKind] = useState(""); // "sheet" | "copy" | "prompt" | ""
+  const [sharedKind, setSharedKind] = useState("");
 
   const [methodOpen, setMethodOpen] = useState(false);
-
-  // toast（短く）
   const [toast, setToast] = useState("");
+
   const toastTimer = useRef(0);
-  const TOAST_MS = 1850;
-  const showToast = (msg) => {
-    setToast(msg);
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(""), TOAST_MS);
-  };
 
   const memo = useMemo(() => buildMemo(formData), [formData]);
-  const meta = useMemo(() => formatMeta(formData, memo), [formData, memo]);
+  const meta = useMemo(() => (memo ? formatMeta(formData, memo) : []), [
+    formData,
+    memo,
+  ]);
+
+  const copyText = useMemo(() => {
+    if (!memo) return "";
+    return buildCopyText(formData, memo);
+  }, [formData, memo]);
 
   useEffect(() => {
     setSealed(false);
@@ -411,27 +535,35 @@ export default function OutputSection({ formData }) {
     setSharedKind("");
     setMethodOpen(false);
     setToast("");
+
     window.clearTimeout(toastTimer.current);
   }, [formData?.birth, formData?.place, formData?.time, formData?.name]);
 
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  useEffect(() => {
+    return () => window.clearTimeout(toastTimer.current);
+  }, []);
+
+  const showToast = (message) => {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 1850);
+  };
 
   if (!memo) return null;
 
   const handleCopy = async () => {
     try {
-      const text = buildCopyText(formData, memo);
-
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(copyText);
       } else {
-        const ok = fallbackCopyText(text);
+        const ok = fallbackCopyText(copyText);
         if (!ok) throw new Error("copy_failed");
       }
 
       setCopied(true);
       setSealed(true);
       showToast("写しました。");
+
       window.setTimeout(() => setCopied(false), 1650);
     } catch {
       showToast("写せませんでした。長押しでコピーしてください。");
@@ -439,9 +571,10 @@ export default function OutputSection({ formData }) {
   };
 
   const handleShare = async () => {
-    const u = new URL(window.location.href);
-    u.hash = "";
-    const url = u.toString();
+    const currentUrl = new URL(window.location.href);
+    currentUrl.hash = "";
+
+    const url = currentUrl.toString();
 
     try {
       if (navigator.share) {
@@ -450,41 +583,52 @@ export default function OutputSection({ formData }) {
           text: "予言ではなく、自己理解の記録。年柱（年干支）を起こして、いまの傾向を整える。",
           url,
         });
+
         setShared(true);
         setSharedKind("sheet");
         setSealed(true);
         showToast("開きました。");
+
         window.setTimeout(() => setShared(false), 1650);
         return;
       }
 
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
+
         setShared(true);
         setSharedKind("copy");
         setSealed(true);
         showToast("URLを写しました。");
+
         window.setTimeout(() => setShared(false), 1650);
         return;
       }
 
       window.prompt("このURLをコピーして共有してください。", url);
+
       setShared(true);
       setSharedKind("prompt");
       setSealed(true);
       showToast("URLを表示しました。");
+
       window.setTimeout(() => setShared(false), 1650);
-    } catch (e) {
-      if (e?.name === "AbortError") {
+    } catch (error) {
+      if (error?.name === "AbortError") {
         showToast("閉じました。");
         return;
       }
+
       showToast("共有できませんでした。URLをコピーしてください。");
     }
   };
 
   const shareDoneLabel =
-    sharedKind === "copy" ? "写しました" : sharedKind === "prompt" ? "表示" : "開きました";
+    sharedKind === "copy"
+      ? "写しました"
+      : sharedKind === "prompt"
+        ? "表示"
+        : "開きました";
 
   return (
     <section
@@ -492,39 +636,50 @@ export default function OutputSection({ formData }) {
       ref={rootRef}
       className={[
         "relative overflow-hidden no-scroll-anchor",
-        // ※“切れ目”はBGレイヤーで溶かす
         "bg-[color:var(--ink-deep)] text-[color:var(--text-primary)]",
-        "pt-[clamp(80px,12vh,200px)]",
-        "pb-[clamp(100px,14vh,240px)]",
+        "pt-[clamp(84px,12vh,200px)]",
+        "pb-[clamp(104px,14vh,240px)]",
         "scroll-mt-[clamp(36px,6vh,92px)]",
-        shown ? "aq-show" : "",
       ].join(" ")}
     >
       <style>{`
-        @keyframes meishikiSpaceDriftA {
-          0%   { transform:translate3d(0%,0%,0) scale(1.06); opacity:.16; }
-          50%  { transform:translate3d(-1.1%,-0.9%,0) scale(1.10); opacity:.22; }
-          100% { transform:translate3d(0%,0%,0) scale(1.06); opacity:.16; }
+        @keyframes meishikiOutputSpaceDriftA {
+          0%   { transform: translate3d(0%, 0%, 0) scale(1.06); opacity: 0.15; }
+          50%  { transform: translate3d(-1.1%, -0.9%, 0) scale(1.10); opacity: 0.22; }
+          100% { transform: translate3d(0%, 0%, 0) scale(1.06); opacity: 0.15; }
         }
-        @keyframes meishikiSpaceDriftB {
-          0%   { transform:translate3d(0%,0%,0) scale(1.08); opacity:.10; }
-          50%  { transform:translate3d(1.3%,1.0%,0) scale(1.14); opacity:.16; }
-          100% { transform:translate3d(0%,0%,0) scale(1.08); opacity:.10; }
+
+        @keyframes meishikiOutputSpaceDriftB {
+          0%   { transform: translate3d(0%, 0%, 0) scale(1.08); opacity: 0.10; }
+          50%  { transform: translate3d(1.3%, 1.0%, 0) scale(1.14); opacity: 0.16; }
+          100% { transform: translate3d(0%, 0%, 0) scale(1.08); opacity: 0.10; }
         }
-        @keyframes meishikiVeilBreathe {
-          0%,100% { opacity:.70; transform:translate3d(0,0,0) scale(1); }
-          50%     { opacity:.86; transform:translate3d(0,-1%,0) scale(1.02); }
+
+        @keyframes meishikiOutputVeilBreathe {
+          0%, 100% { opacity: 0.70; transform: translate3d(0, 0, 0) scale(1); }
+          50%      { opacity: 0.86; transform: translate3d(0, -1%, 0) scale(1.02); }
         }
-        @keyframes meishikiAuroraSweep {
-          0%   { transform:translate3d(-18%,0,0) rotate(-4deg); opacity:.16; }
-          50%  { transform:translate3d(10%,0,0) rotate(2deg);  opacity:.28; }
-          100% { transform:translate3d(22%,0,0) rotate(-2deg); opacity:.16; }
+
+        @keyframes meishikiOutputAuroraSweep {
+          0%   { transform: translate3d(-18%, 0, 0) rotate(-4deg); opacity: 0.16; }
+          50%  { transform: translate3d(10%, 0, 0) rotate(2deg); opacity: 0.28; }
+          100% { transform: translate3d(22%, 0, 0) rotate(-2deg); opacity: 0.16; }
+        }
+
+        @keyframes meishikiSealPulse {
+          0%, 100% {
+            opacity: 0.56;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.92;
+            transform: scale(1.035);
+          }
         }
       `}</style>
 
-      {/* ── BG（切れ目を溶かす） ── */}
+      {/* BG */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        {/* ここが核：上端/下端を ink-mid に寄せて、中央で ink-deep に沈める */}
         <div
           className="absolute inset-0"
           style={{
@@ -536,7 +691,6 @@ export default function OutputSection({ formData }) {
           }}
         />
 
-        {/* 境界の羽化（上/下）：さらに薄く“溶かす” */}
         <div
           className="absolute inset-x-0 top-0"
           style={{
@@ -546,6 +700,7 @@ export default function OutputSection({ formData }) {
             opacity: 0.55,
           }}
         />
+
         <div
           className="absolute inset-x-0 bottom-0"
           style={{
@@ -556,7 +711,6 @@ export default function OutputSection({ formData }) {
           }}
         />
 
-        {/* オーロラ（演出追加・軽い） */}
         <div
           className="absolute inset-[-12%]"
           style={{
@@ -564,13 +718,14 @@ export default function OutputSection({ formData }) {
               "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(190,145,255,0.10) 40%, rgba(170,110,255,0.06) 54%, rgba(0,0,0,0) 100%)",
             filter: "blur(26px) saturate(1.12)",
             mixBlendMode: "screen",
-            animation: reduce ? "none" : "meishikiAuroraSweep 18s ease-in-out infinite",
-            opacity: 0.55,
+            animation: reduce
+              ? "none"
+              : "meishikiOutputAuroraSweep 18s ease-in-out infinite",
+            opacity: mobile ? 0.42 : 0.55,
           }}
         />
 
-        {/* texture（PCのみ） */}
-        {!isMobile && (
+        {!mobile && (
           <>
             <div
               className="absolute inset-[-8%] mix-blend-screen"
@@ -579,9 +734,12 @@ export default function OutputSection({ formData }) {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(1.2px) saturate(0.95) brightness(0.78)",
-                animation: reduce ? "none" : "meishikiSpaceDriftA 26s ease-in-out infinite",
+                animation: reduce
+                  ? "none"
+                  : "meishikiOutputSpaceDriftA 26s ease-in-out infinite",
               }}
             />
+
             <div
               className="absolute inset-[-10%] mix-blend-screen"
               style={{
@@ -589,14 +747,15 @@ export default function OutputSection({ formData }) {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(9px) saturate(1.05) brightness(0.72)",
-                animation: reduce ? "none" : "meishikiSpaceDriftB 36s ease-in-out infinite",
+                animation: reduce
+                  ? "none"
+                  : "meishikiOutputSpaceDriftB 36s ease-in-out infinite",
               }}
             />
           </>
         )}
 
-        {/* SP向け：軽量オーブ */}
-        {isMobile && (
+        {mobile && (
           <div
             className="absolute inset-0"
             style={{
@@ -609,7 +768,6 @@ export default function OutputSection({ formData }) {
           />
         )}
 
-        {/* veil */}
         <div
           className="absolute inset-0"
           style={{
@@ -618,15 +776,16 @@ export default function OutputSection({ formData }) {
               "radial-gradient(circle at 18% 30%, rgba(132,88,255,0.14), rgba(0,0,0,0) 32%)",
             ].join(","),
             filter: "blur(0.3px)",
-            animation: reduce ? "none" : "meishikiVeilBreathe 14s ease-in-out infinite",
+            animation: reduce
+              ? "none"
+              : "meishikiOutputVeilBreathe 14s ease-in-out infinite",
           }}
         />
 
-        {/* dot */}
         <div
           className="absolute inset-0"
           style={{
-            opacity: isMobile ? 0.06 : 0.10,
+            opacity: mobile ? 0.055 : 0.1,
             backgroundImage:
               "radial-gradient(rgba(255,245,255,0.9) 1px, transparent 1px)",
             backgroundSize: "160px 160px",
@@ -635,17 +794,21 @@ export default function OutputSection({ formData }) {
         />
       </div>
 
-      {/* Stars（維持／少しだけ増） */}
-      <StarField targetId="output" count={isMobile ? 90 : 180} z={2} />
+      <StarField targetId="output" count={mobile ? 86 : 180} z={2} />
       <ShootingStar targetId="output" z={3} />
 
-      {/* ── Content ── */}
-      <div className="relative mx-auto max-w-[1120px] px-4 sm:px-6">
-        <div className="aq-fade relative border-l border-white/10 pl-5 md:pl-10">
-          {!isMobile && (
+      {/* Content */}
+      <div className="relative z-10 mx-auto max-w-[1120px] px-4 sm:px-6">
+        <div
+          className={[
+            "aq-fade relative border-l border-white/10 pl-5 md:pl-10",
+            shown ? "aq-show" : "",
+          ].join(" ")}
+        >
+          {!mobile && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 opacity-[0.09]"
+              className="pointer-events-none absolute inset-0 opacity-[0.08]"
               style={{
                 backgroundImage:
                   "repeating-linear-gradient(to bottom, rgba(255,255,255,0.10) 0px, rgba(255,255,255,0.10) 1px, transparent 1px, transparent 56px)",
@@ -654,15 +817,31 @@ export default function OutputSection({ formData }) {
             />
           )}
 
-          <div className="relative max-w-[900px]">
+          <div className="relative max-w-[920px]">
             <div className="mb-8 flex flex-col gap-5 md:mb-10 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-[10px] tracking-[0.30em] text-[color:var(--text-muted)]">
                   読解
                 </p>
-                <h2 className="mt-2.5 text-[20px] tracking-[0.12em] md:text-[22px]">
-                  命式メモ
-                </h2>
+
+                <div className="mt-2.5 flex items-center gap-4">
+                  <h2 className="text-[20px] tracking-[0.12em] md:text-[22px]">
+                    命式メモ
+                  </h2>
+
+                  <span
+                    aria-hidden="true"
+                    className="hidden h-[30px] w-[30px] items-center justify-center rounded-full border border-white/12 bg-white/5 text-[11px] text-white/55 shadow-[0_0_24px_rgba(180,130,255,0.10)] sm:inline-flex"
+                    style={{
+                      animation: sealed
+                        ? "meishikiSealPulse 4.8s ease-in-out infinite"
+                        : "none",
+                    }}
+                  >
+                    印
+                  </span>
+                </div>
+
                 <MetaRow meta={meta} />
               </div>
 
@@ -677,113 +856,116 @@ export default function OutputSection({ formData }) {
               </div>
             </div>
 
-            {toast && (
+            <Toast>{toast}</Toast>
+
+            <div
+              className="
+                relative rounded-[22px] border border-white/10
+                bg-white/[0.025] px-5 py-6 shadow-[0_28px_90px_rgba(0,0,0,0.24)]
+                sm:px-7 sm:py-8 md:px-9 md:py-9
+              "
+            >
               <div
-                role="status"
-                aria-live="polite"
-                className="
-                  -mt-2 mb-8 inline-flex max-w-[560px]
-                  rounded-[14px] border border-white/12 bg-white/5
-                  px-4 py-3 text-[11px] leading-[1.9]
-                  tracking-[0.12em] text-white/80
-                  backdrop-blur
-                "
-              >
-                {toast}
-              </div>
-            )}
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-[0.018]"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(rgba(255,255,255,0.16) 0.42px, transparent 0.42px)",
+                  backgroundSize: "4px 4px",
+                }}
+              />
 
-            <div className="space-y-6 md:space-y-7">
-              {memo.blocks.map((b) => (
-                <Block
-                  key={b.key}
-                  label={b.label}
-                  subtitle={b.subtitle}
-                  desc={b.desc}
-                  img={b.img}
-                >
-                  {memo.values[b.key]}
-                </Block>
-              ))}
-
-              <SealMark active={sealed} />
-
-              {memo?.method && (
-                <section className="border-t border-white/10 pt-6 md:pt-7">
-                  <button
-                    type="button"
-                    onClick={() => setMethodOpen((v) => !v)}
-                    aria-expanded={methodOpen}
-                    className="flex min-h-[44px] w-full items-center justify-between gap-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--mist-400)]/30"
+              <div className="relative space-y-6 md:space-y-7">
+                {memo.blocks.map((block) => (
+                  <Block
+                    key={block.key}
+                    label={block.label}
+                    subtitle={block.subtitle}
+                    desc={block.desc}
+                    img={block.img}
                   >
-                    <p className="text-[11px] tracking-[0.30em] text-[color:var(--text-secondary)]">
-                      【算出根拠】
-                    </p>
-                    <span
+                    {memo.values[block.key]}
+                  </Block>
+                ))}
+
+                <SealMark active={sealed} />
+
+                {memo?.method && (
+                  <section className="border-t border-white/10 pt-6 md:pt-7">
+                    <MethodToggle
+                      open={methodOpen}
+                      onClick={() => setMethodOpen((value) => !value)}
+                    />
+
+                    <div
+                      id="meishiki-method"
                       className={[
-                        "text-[10px] tracking-[0.14em] text-white/45 transition-all duration-200",
-                        methodOpen ? "text-white/70" : "",
+                        "overflow-hidden transition-all duration-500 [transition-timing-function:var(--ease-ink)]",
+                        methodOpen
+                          ? "max-h-[900px] opacity-100 pt-5"
+                          : "max-h-0 opacity-0",
                       ].join(" ")}
                     >
-                      {methodOpen ? "閉じる" : "開く"}
-                    </span>
-                  </button>
-
-                  <div
-                    className={[
-                      "overflow-hidden transition-all duration-500 [transition-timing-function:var(--ease-ink)]",
-                      methodOpen
-                        ? "max-h-[800px] opacity-100 pt-5"
-                        : "max-h-0 opacity-0",
-                    ].join(" ")}
-                  >
-                    <div className="space-y-2 text-[12px] leading-[2.0] text-[color:var(--text-secondary)]">
-                      {(memo.method.lines ?? []).map((t, i) => (
-                        <p key={i}>{t}</p>
-                      ))}
-                    </div>
-
-                    {(memo.method.sources ?? []).length > 0 && (
-                      <div className="mt-7">
-                        <p className="mb-3 text-[11px] tracking-[0.30em] text-[color:var(--text-secondary)]">
-                          【参考】
-                        </p>
-                        <ul className="space-y-2.5">
-                          {memo.method.sources.map((s) => (
-                            <li key={s.url}>
-                              <a
-                                href={s.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block py-1 text-[12px] leading-[1.9] text-[color:var(--text-muted)] underline decoration-white/20 underline-offset-4 hover:decoration-[color:var(--mist-400)] active:text-white/80"
-                              >
-                                {s.title}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
+                      <div className="space-y-2 text-[12px] leading-[2.0] text-[color:var(--text-secondary)]">
+                        {(memo.method.lines ?? []).map((text, index) => (
+                          <p key={`${text}-${index}`}>{text}</p>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                </section>
-              )}
 
-              <div className="pt-10 text-[11px] leading-[2.0] text-[color:var(--text-muted)] md:pt-12 md:text-[12px]">
-                <p>
-                  これは予言ではなく、自己理解のための記録です。
-                  <br className="sm:hidden" />
-                  あなたの判断と行動が、現実をつくります。
-                </p>
-                <p className="mt-4">
-                  <a
-                    href="https://gushikendesign.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white/65 underline decoration-white/18 underline-offset-4 hover:decoration-[color:var(--mist-400)] active:text-white/85"
-                  >
-                    Designed &amp; Built by GUSHIKEN DESIGN
-                  </a>
-                </p>
+                      {(memo.method.sources ?? []).length > 0 && (
+                        <div className="mt-7">
+                          <p className="mb-3 text-[11px] tracking-[0.30em] text-[color:var(--text-secondary)]">
+                            【参考】
+                          </p>
+
+                          <ul className="space-y-2.5">
+                            {memo.method.sources.map((source) => (
+                              <li key={source.url}>
+                                <a
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="
+                                    block py-1 text-[12px] leading-[1.9]
+                                    text-[color:var(--text-muted)] underline
+                                    decoration-white/20 underline-offset-4
+                                    hover:decoration-[color:var(--mist-400)]
+                                    active:text-white/80
+                                  "
+                                >
+                                  {source.title}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                <div className="pt-10 text-[11px] leading-[2.0] text-[color:var(--text-muted)] md:pt-12 md:text-[12px]">
+                  <p>
+                    これは予言ではなく、自己理解のための記録です。
+                    <br className="sm:hidden" />
+                    あなたの判断と行動が、現実をつくります。
+                  </p>
+
+                  <p className="mt-4">
+                    <a
+                      href="https://gushikendesign.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="
+                        text-white/65 underline decoration-white/18
+                        underline-offset-4 hover:decoration-[color:var(--mist-400)]
+                        active:text-white/85
+                      "
+                    >
+                      Designed &amp; Built by GUSHIKEN DESIGN
+                    </a>
+                  </p>
+                </div>
               </div>
             </div>
           </div>
